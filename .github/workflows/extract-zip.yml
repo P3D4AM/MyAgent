@@ -5,38 +5,70 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   extract:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract ZIP
+      - name: Extract and filter source
         run: |
-          mkdir -p extracted
           python - <<'PY'
           import zipfile
           from pathlib import Path
+          import shutil
 
           archive = Path("MyAgent.zip")
           target = Path("extracted").resolve()
 
+          if not archive.exists():
+              raise SystemExit("MyAgent.zip not found")
+
+          shutil.rmtree(target, ignore_errors=True)
+          target.mkdir(parents=True)
+
+          excluded = {
+              ".env", ".env.local", ".env.production",
+              "id_rsa", "id_ed25519",
+              "credentials.json", "secrets.json"
+          }
+
           with zipfile.ZipFile(archive) as z:
               for item in z.infolist():
                   dest = (target / item.filename).resolve()
+
                   if dest != target and target not in dest.parents:
                       raise RuntimeError("Unsafe ZIP path: " + item.filename)
-              z.extractall(target)
 
-          print("Extraction complete")
+                  parts = Path(item.filename).parts
+                  if any(p.lower() in {".git", "node_modules", "__pycache__",
+                                       ".venv", "venv"} for p in parts):
+                      continue
+                  if any(p.lower() in excluded for p in parts):
+                      continue
+                  if item.filename.lower().endswith(
+                      (".pem", ".key", ".p12", ".pfx")
+                  ):
+                      continue
+
+                  if not item.is_dir():
+                      dest.parent.mkdir(parents=True, exist_ok=True)
+                      dest.write_bytes(z.read(item))
+
+          print("Extracted files:", sum(1 for p in target.rglob("*") if p.is_file()))
           PY
 
-      - name: Upload extracted source
-        uses: actions/upload-artifact@v7
-        with:
-          name: MyAgent-extracted-source
-          path: extracted/
-          retention-days: 3
+      - name: Publish extracted source branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan extracted-source
+          git rm -rf . >/dev/null 2>&1 || true
+          cp -a extracted/. .
+          git add .
+          git commit -m "Extract MyAgent source for review"
+          git push origin extracted-source
