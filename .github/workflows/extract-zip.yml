@@ -1,0 +1,42 @@
+
+name: Extract MyAgent ZIP
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract ZIP
+        run: |
+          mkdir -p extracted
+          python - <<'PY'
+          import zipfile
+          from pathlib import Path
+
+          archive = Path("MyAgent.zip")
+          target = Path("extracted").resolve()
+
+          with zipfile.ZipFile(archive) as z:
+              for item in z.infolist():
+                  dest = (target / item.filename).resolve()
+                  if dest != target and target not in dest.parents:
+                      raise RuntimeError("Unsafe ZIP path: " + item.filename)
+              z.extractall(target)
+
+          print("Extraction complete")
+          PY
+
+      - name: Upload extracted source
+        uses: actions/upload-artifact@v7
+        with:
+          name: MyAgent-extracted-source
+          path: extracted/
+          retention-days: 3
