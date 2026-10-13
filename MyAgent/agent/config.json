@@ -1,0 +1,59 @@
+{
+  "browser": {
+    "headless": false,
+    "user_data_dir": "data/profiles/main",
+    "user_agent": null,
+    "proxy": null,
+    "slow_mo_ms": 0,
+    "viewport": null,
+    "channel": null,
+    "channel_fallbacks": ["msedge", "chrome", "chromium"]
+  },
+  "stealth": {
+    "enabled": true,
+    "level": "standard",
+    "modules": {
+      "webdriver": true,
+      "chrome_runtime": true,
+      "permissions": true,
+      "plugins": true,
+      "languages_platform": true,
+      "hw_specs": true,
+      "canvas_noise": true,
+      "audio_noise": true,
+      "webgl_mask": true
+    },
+    "disable_for": []
+  },
+  "captcha": {
+    "provider": "2captcha",
+    "api_key": "",
+    "auto_solve": true,
+    "timeout_s": 180,
+    "poll_interval_s": 5
+  },
+  "human": {
+    "enabled": true,
+    "min_delay_s": 0.35,
+    "max_delay_s": 1.4,
+    "typing_delay_ms": [35, 95]
+  },
+  "platforms": {
+    "instagram": { "username": "", "password": "" },
+    "twitter": { "username": "", "password": "" },
+    "telegram": { "phone": "" },
+    "facebook": { "email": "", "password": "" },
+    "linkedin": { "email": "", "password": "" },
+    "bale": { "phone": "" },
+    "rubika": { "phone": "" },
+    "eitaa": { "phone": "" }
+  },
+  "scheduler": {
+    "max_concurrent": 1
+  },
+  "gateway": {
+    "enabled": false,
+    "url": "ws://127.0.0.1:3030",
+    "token": "change-me"
+  }
+}

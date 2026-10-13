@@ -1,0 +1,611 @@
+     1→# -*- coding: utf-8 -*-
+     2→"""
+     3→ParsAgent — چاپخانهٔ رسانه (تب «🧠 هوش مصنوعی» ← کارت‌های ساخت عکس و ویدیو)
+     4→==========================================================================
+     5→
+     6→این ماژول الهام‌گرفته از پروژهٔ معروف چینیِ متن‌باز «MoneyPrinterTurbo»
+     7→(github.com/harry0703/MoneyPrinterTurbo) است: «با AI، با یک کلیک ویدیوی کوتاه
+     8→بساز» — آنجا موضوع را می‌دهید و خودش فیلم‌نامه می‌نویسد، صحنه‌ها را عکس‌گذاری
+     9→می‌کند، گویندگی، زیرنویس و موسیقی اضافه می‌کند و ویدیوی آمادهٔ انتشار تحویل
+    10→می‌دهد. ما همان زنجیره را برای پلتفرم‌های فارسی بازسازی کرده‌ایم:
+    11→
+    12→  ۱) 🧠 فیلم‌نامه: مدل زبانی ماجرای صحنه‌به‌صحنه (گویندگی فارسی + پرامپت تصویر) می‌نویسد
+    13→  ۲) 🗣 گویندگی: edge-tts مایکروسافت — کاملاً رایگان، صدای طبیعی فارسی
+    14→     (فرید / دلارا) + زمان‌بندی کلمه‌به‌کلمه برای زیرنویس دقیق
+    15→  ۳) 🖼 تصویر هر صحنه: از AI تصویرساز (Z.ai GLM-Image / CogView-4 / DALL·E 3) —
+    16→     و اگر کلید ندارید، به‌صورت خودکار روی Pollinations رایگان می‌سازد
+    17→  ۴) 📝 زیرنویس: فارسیِ درست (رسم‌الخط + راست‌به‌چپ) روی نوار پایین تصویر حک می‌شود
+    18→  ۵) 🎬 ترکیب: ffmpeg (imageio-ffmpeg) — حرکت آرام دوربین (Ken Burns)،
+    19→     محوِ ورود/خروج، صدای گوینده و در صورت موجود بودن، موسیقی پس‌زمینهٔ ملایم
+    20→  ۶) 📦 خروجی: MP4 آمادهٔ انتشار در «رسانه‌ها» — همان‌جا که پست‌ها عکس می‌گیرند
+    21→
+    22→ساخت عکس هم همین‌جاست: چند سرویس رایگان و پولی + زنجیرهٔ جایگزین خودکار.
+    23→"""
+    24→from __future__ import annotations
+    25→
+    26→import asyncio
+    27→import base64
+    28→import json
+    29→import math
+    30→import random
+    31→import re
+    32→import subprocess
+    33→import urllib.parse
+    34→import urllib.request
+    35→import uuid
+    36→from datetime import datetime
+    37→from pathlib import Path
+    38→from typing import Any, Callable, Dict, List, Optional, Tuple
+    39→
+    40→BASE = Path(__file__).resolve().parent
+    41→MEDIA_DIR = BASE / "media"
+    42→VIDEOS_DIR = MEDIA_DIR / "videos"
+    43→MUSIC_DIR = MEDIA_DIR / "music"      # اختیاری — فایل‌های mp3 خودتان را اینجا بگذارید
+    44→for _d in (MEDIA_DIR, VIDEOS_DIR, MUSIC_DIR):
+    45→    try:
+    46→        _d.mkdir(parents=True, exist_ok=True)
+    47→    except Exception:
+    48→        pass
+    49→
+    50→# برای سرویس‌های اینترنتی همان پروکسی سیستم (VPN کاربر)؛ لوکال بدون پروکسی.
+    51→_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    52→
+    53→
+    54→class MediaError(Exception):
+    55→    """خطای قابل‌فهم برای کاربر."""
+    56→
+    57→
+    58→# ════════════════════════════════════════════════════════════════════ کاتالوگ تصویرسازها
+    59→# ترتیب مهم است: Z.ai اولِ لیست است (پیشنهاد ما). همه OpenAI-سازگارند.
+    60→IMAGE_PROVIDERS: Dict[str, Dict[str, Any]] = {
+    61→    "zai": {
+    62→        "name": "Z.ai — تصویرساز",
+    63→        "base": "https://api.z.ai/api/paas/v4",
+    64→        "key_field": "zai",
+    65→        "note": "پیشنهادی — GLM-Image و CogView-4؛ کیفیت بالا و ارزان",
+    66→        "models": [
+    67→            {"id": "glm-image", "name": "GLM-Image", "tag": "پیشرفته",
+    68→             "note": "تصویرساز پرچمدار Z.ai — واقع‌گرای بالا"},
+    69→            {"id": "cogview-4", "name": "CogView-4", "tag": "پولی",
+    70→             "note": "تا کیفیت 2K — مناسب پوستر و بنر"},
+    71→            {"id": "cogview-3-flash", "name": "CogView-3-Flash", "tag": "رایگان",
+    72→             "note": "رایگان و سریع — برای شروع"},
+    73→        ],
+    74→    },
+    75→    "openai": {
+    76→        "name": "OpenAI — تصویرساز",
+    77→        "base": "https://api.openai.com/v1",
+    78→        "key_field": "openai",
+    79→        "note": "DALL·E 3 و gpt-image-1 — پولی",
+    80→        "models": [
+    81→            {"id": "gpt-image-1", "name": "GPT Image 1", "tag": "پیشرفته",
+    82→             "note": "نسل جدید OpenAI"},
+    83→            {"id": "dall-e-3", "name": "DALL·E 3", "tag": "پولی",
+    84→             "note": "کیفیت بالا، خلاق"},
+    85→        ],
+    86→    },
+    87→    "pollinations": {
+    88→        "name": "Pollinations — رایگان",
+    89→        "base": "",
+    90→        "key_field": "",
+    91→        "note": "کاملاً رایگان و بدون کلید API — مدل Flux — جایگزین خودکار وقتی سرویس دیگر نبود",
+    92→        "models": [
+    93→            {"id": "flux", "name": "Flux", "tag": "رایگان",
+    94→             "note": "رایگان بدون ثبت‌نام — کیفیت خوب"},
+    95→            {"id": "turbo", "name": "Turbo", "tag": "رایگان",
+    96→             "note": "سریع‌ترین حالت رایگان"},
+    97→        ],
+    98→    },
+    99→}
+   100→
+   101→# نسبت‌های تصویر (اندازهٔ API → اندازهٔ پیکسل برای Pollinations)
+   102→SIZES: Dict[str, Dict[str, Any]] = {
+   103→    "square":    {"name": "مربع ۱:۱ (پست اینستاگرام/لینکدین)", "api": "1024x1024", "w": 1024, "h": 1024},
+   104→    "portrait":  {"name": "عمودی ۴:۵ تا ۹:۱۶ (استوری/ریلز)", "api": "1024x1792", "w": 1080, "h": 1920},
+   105→    "landscape": {"name": "افقی ۱۶:۹ (توییتر/یوتیوب)", "api": "1792x1024", "w": 1792, "h": 1024},
+   106→}
+   107→
+   108→# نسبت‌های ویدیو
+   109→ASPECTS: Dict[str, Dict[str, Any]] = {
+   110→    "9:16": {"name": "عمودی ۹:۱۶ — ریلز/شورتس/استوری", "w": 1080, "h": 1920},
+   111→    "1:1":  {"name": "مربع ۱:۱ — پست فید", "w": 1080, "h": 1080},
+   112→    "16:9": {"name": "افقی ۱۶:۹ — یوتیوب/توییتر", "w": 1920, "h": 1080},
+   113→}
+   114→
+   115→# صداهای edge-tts — رایگان و بدون کلید (فارسی + چند زبان پرکاربرد)
+   116→VOICES: List[Dict[str, str]] = [
+   117→    {"id": "fa-IR-FaridNeural", "name": "فرید — مرد، فارسی (ایران)", "lang": "fa"},
+   118→    {"id": "fa-IR-DilaraNeural", "name": "دلارا — زن، فارسی (ایران)", "lang": "fa"},
+   119→    {"id": "en-US-GuyNeural", "name": "Guy — مرد، انگلیسی (آمریکا)", "lang": "en"},
+   120→    {"id": "en-US-JennyNeural", "name": "Jenny — زن، انگلیسی (آمریکا)", "lang": "en"},
+   121→    {"id": "ar-SA-HamedNeural", "name": "حامد — مرد، عربی", "lang": "ar"},
+   122→    {"id": "tr-TR-AhmetNeural", "name": "Ahmet — مرد، ترکی استانبولی", "lang": "tr"},
+   123→]
+   124→
+   125→
+   126→def _http_json(url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
+   127→    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+   128→    req = urllib.request.Request(url, data=body, method="POST",
+   129→                                 headers={"Content-Type": "application/json",
+   130→                                          "User-Agent": "ParsAgent/2.4", **headers})
+   131→    opener = _DIRECT if ("127.0.0.1" in url or "localhost" in url) else urllib.request.build_opener()
+   132→    try:
+   133→        with opener.open(req, timeout=timeout) as r:
+   134→            return json.loads(r.read().decode("utf-8"))
+   135→    except urllib.error.HTTPError as e:
+   136→        try:
+   137→            detail = e.read().decode("utf-8", "ignore")[:300]
+   138→        except Exception:
+   139→            detail = ""
+   140→        raise MediaError(f"خطای {e.code} از سرویس تصویرساز{(' — ' + detail) if detail else ''}")
+   141→    except urllib.error.URLError as e:
+   142→        raise MediaError(f"ارتباط با سرویس تصویرساز برقرار نشد: {e.reason} — اینترنت/VPN را چک کنید")
+   143→
+   144→
+   145→def _download_bytes(url: str, timeout: int = 90) -> bytes:
+   146→    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 ParsAgent/2.4"})
+   147→    with urllib.request.build_opener().open(req, timeout=timeout) as r:
+   148→        return r.read()
+   149→
+   150→
+   151→def _slug(text: str, limit: int = 28) -> str:
+   152→    s = re.sub(r"[^A-Za-z0-9\-]+", "-", (text or "").strip()).strip("-").lower()
+   153→    return (s or "ai")[:limit]
+   154→
+   155→
+   156→def _now_stamped(kind: str, name: str) -> str:
+   157→    return f"{kind}-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{_slug(name)}.png"
+   158→
+   159→
+   160→# ════════════════════════════════════════════════════════════════════ ساخت عکس با AI
+   161→async def generate_image(ai_cfg: Dict[str, Any], prompt: str, *, provider: str = "zai",
+   162→                        model: str = "", size_key: str = "square", out_name: str = "",
+   163→                        progress: Optional[Callable[[int, str], None]] = None) -> Dict[str, Any]:
+   164→    """یک عکس با AI می‌سازد و در «رسانه‌ها» ذخیره می‌کند.
+   165→
+   166→    زنجیرهٔ جایگزین: اگر سرویس انتخابی کلید نداشت یا خطا داد، خودکار به
+   167→    Pollinations (رایگان و بدون کلید) برمی‌گردد تا کارِ کاربر هرگز نیمه‌کاره نماند.
+   168→    """
+   169→    prompt = (prompt or "").strip()
+   170→    if not prompt:
+   171→        raise MediaError("متن توضیح عکس (پرامپت) خالی است")
+   172→    size = SIZES.get(size_key, SIZES["square"])
+   173→    keys = ai_cfg.get("api_keys") or {}
+   174→    tried: List[str] = []
+   175→
+   176→    def _report(pct: int, msg: str) -> None:
+   177→        if progress:
+   178→            try:
+   179→                progress(pct, msg)
+   180→            except Exception:
+   181→                pass
+   182→
+   183→    chain: List[Tuple[str, str]] = []
+   184→    if provider and provider in IMAGE_PROVIDERS and provider != "pollinations":
+   185→        m = model or IMAGE_PROVIDERS[provider]["models"][0]["id"]
+   186→        chain.append((provider, m))
+   187→    chain.append(("pollinations", model if provider == "pollinations" else "flux"))
+   188→
+   189→    data_bytes: Optional[bytes] = None
+   190→    used = ""
+   191→    for prov, mdl in chain:
+   192→        info = IMAGE_PROVIDERS[prov]
+   193→        key = keys.get(info.get("key_field", ""), "") if info.get("key_field") else "free"
+   194→        if not key:
+   195→            tried.append(f"{info['name']}: کلید API ندارد")
+   196→            continue
+   197→        _report(30, f"در حال ساخت عکس با {info['name']} ({mdl}) …")
+   198→        attempts = 2 if prov == "pollinations" else 1  # سرویس رایگان گاهی کند است — یک تلاش دیگر
+   199→        for attempt in range(attempts):
+   200→            try:
+   201→                if prov == "pollinations":
+   202→                    q = urllib.parse.quote(prompt[:1500], safe="")
+   203→                    url = (f"https://image.pollinations.ai/prompt/{q}"
+   204→                           f"?width={size['w']}&height={size['h']}"
+   205→                           f"&seed={random.randrange(1, 10**6)}&nologo=true&model={mdl}")
+   206→                    data_bytes = await asyncio.to_thread(_download_bytes, url)
+   207→                else:
+   208→                    payload = {"model": mdl, "prompt": prompt[:3800], "size": size["api"], "n": 1}
+   209→                    if mdl == "dall-e-3":
+   210→                        payload["response_format"] = "url"
+   211→                    res = await asyncio.to_thread(
+   212→                        _http_json, info["base"] + "/images/generations",
+   213→                        {"Authorization": f"Bearer {key}"}, payload)
+   214→                    item = ((res.get("data") or [{}])[0])
+   215→                    if item.get("b64_json"):
+   216→                        data_bytes = base64.b64decode(item["b64_json"])
+   217→                    elif item.get("url"):
+   218→                        data_bytes = await asyncio.to_thread(_download_bytes, item["url"])
+   219→                if data_bytes:
+   220→                    used = f"{info['name']} · {mdl}"
+   221→                    break
+   222→            except MediaError as e:
+   223→                tried.append(f"{info['name']}: {e}")
+   224→                data_bytes = None
+   225→                continue
+   226→            except Exception as e:  # noqa
+   227→                tried.append(f"{info['name']}: {e}")
+   228→                data_bytes = None
+   229→                continue
+   230→        if data_bytes:
+   231→            break
+   232→    if not data_bytes:
+   233→        raise MediaError("هیچ سرویس تصویرسازی جواب نداد — " + " | ".join(tried[:3]))
+   234→
+   235→    # ذخیره در رسانه‌ها (فرمت واقعی را از بایت‌ها تشخیص می‌دهیم)
+   236→    kind = "png" if data_bytes[:8] == b"\x89PNG\r\n\x1a\n" else ("jpg" if data_bytes[:3] == b"\xff\xd8\xff" else "png")
+   237→    name = out_name or _now_stamped("ai-image", prompt)
+   238→    name = re.sub(r"\.(png|jpg|jpeg|webp)$", "", name, flags=re.I) + f".{kind}"
+   239→    path = MEDIA_DIR / name
+   240→    path.write_bytes(data_bytes)
+   241→    _report(100, f"✅ عکس ساخته شد: {name}")
+   242→    return {"ok": True, "file": name, "path": str(path), "provider": used,
+   243→            "url": f"/media/{urllib.parse.quote(name)}", "size": size["api"]}
+   244→
+   245→
+   246→# ════════════════════════════════════════════════════════════════════ ویدیوی خودکار (سبک MoneyPrinterTurbo)
+   247→async def _llm_scenes(llm_json: Callable, ai_cfg: Dict[str, Any], provider: str, model: str,
+   248→                      topic: str, n_scenes: int, lang: str, seconds: int) -> List[Dict[str, Any]]:
+   249→    """فیلم‌نامهٔ صحنه‌به‌صحنه — مثل MoneyPrinterTurbo: ماجرای هر صحنه + پرامپت تصویرش."""
+   250→    per = max(4, min(20, seconds // max(n_scenes, 1)))
+   251→    system = (
+   252→        "تو فیلم‌نامه‌نویس ویدیوهای کوتاه شبکه‌های اجتماعی هستی (سبک MoneyPrinterTurbo). "
+   253→        f"موضوع را به {n_scenes} صحنهٔ پیوسته تبدیل کن که مجموعاً حدود {seconds} ثانیه ویدیو شود. "
+   254→        f"زبان گویندگی: {'فارسی' if lang == 'fa' else 'انگلیسی'}. "
+   255→        "هر صحنه فقط یک جملهٔ کوتاه و طبیعی برای «بخواندن» دارد (۶ تا ۱۴ کلمه) و یک image_prompt انگلیسی "
+   256→        "برای تصویر همان صحنه (سبک سینمایی، نور خوب، بدون متن داخل تصویر). متن داخل تصویر ممنوع. "
+   257→        'خروجی فقط JSON: {"scenes":[{"narration":"...","image_prompt":"..."}]}'
+   258→    )
+   259→    data = await llm_json(ai_cfg, provider, model, [
+   260→        {"role": "system", "content": system},
+   261→        {"role": "user", "content": f"موضوع ویدیو: {topic}"},
+   262→    ], temperature=0.7)
+   263→    scenes = []
+   264→    for s in (data.get("scenes") or [])[:n_scenes * 2]:
+   265→        nar = str(s.get("narration") or "").strip()
+   266→        img = str(s.get("image_prompt") or "").strip()
+   267→        if nar:
+   268→            scenes.append({"narration": nar, "image_prompt": img or topic})
+   269→    if len(scenes) < 2:
+   270→        raise MediaError("مدل، فیلم‌نامهٔ معتبری نساخت — دوباره تلاش کنید یا مدل بهتری انتخاب کنید")
+   271→    return scenes[:n_scenes]
+   272→
+   273→
+   274→async def _tts_scene(text: str, voice: str, out_mp3: Path) -> Dict[str, Any]:
+   275→    """گویندگی رایگان با edge-tts + جمع‌آوری زمان کلمات (برای زیرنویس دقیق)."""
+   276→    try:
+   277→        import edge_tts
+   278→    except ImportError:
+   279→        raise MediaError("کتابخانهٔ edge-tts نصب نیست — در خط فرمان: pip install edge-tts")
+   280→    words: List[Dict[str, Any]] = []
+   281→    out_mp3.parent.mkdir(parents=True, exist_ok=True)
+   282→    with open(out_mp3, "wb") as f:
+   283→        # boundary=WordBoundary — زمان دقیق هر کلمه برای زیرنویس (پیش‌فرض نسخهٔ 7+ جمله‌ای است)
+   284→        try:
+   285→            communicate = edge_tts.Communicate(text, voice, rate="+4%", boundary="WordBoundary")
+   286→        except TypeError:  # نسخه‌های قدیمی edge-tts — WordBoundary خودکار می‌آمد
+   287→            communicate = edge_tts.Communicate(text, voice, rate="+4%")
+   288→        async for chunk in communicate.stream():
+   289→            if chunk["type"] == "audio":
+   290→                f.write(chunk["data"])
+   291→            elif chunk["type"] in ("WordBoundary", "SentenceBoundary"):
+   292→                words.append({"t": chunk["offset"] / 1e7, "d": chunk["duration"] / 1e7,
+   293→                              "w": chunk.get("text", "")})
+   294→    dur = (words[-1]["t"] + words[-1]["d"]) if words else max(3.0, len(text.split()) * 0.42)
+   295→    return {"words": words, "duration": round(dur, 3), "file": out_mp3}
+   296→
+   297→
+   298→def _ffmpeg_exe() -> str:
+   299→    try:
+   300→        import imageio_ffmpeg
+   301→        return imageio_ffmpeg.get_ffmpeg_exe()
+   302→    except Exception:
+   303→        raise MediaError("کتابخانهٔ imageio-ffmpeg نصب نیست — در خط فرمان: pip install imageio-ffmpeg")
+   304→
+   305→
+   306→def _run_ffmpeg(args: List[str], timeout: int = 900) -> None:
+   307→    # -threads 4: مصرف حافظه/سی‌پی‌یو محدود — روی سیستم‌های ضعیف هم پایدار
+   308→    cmd = [_ffmpeg_exe(), "-hide_banner", "-loglevel", "error", "-y", "-threads", "4"] + args
+   309→    r = subprocess.run(cmd, capture_output=True, timeout=timeout)
+   310→    if r.returncode != 0:
+   311→        tail = r.stderr.decode("utf-8", "ignore")[-400:]
+   312→        raise MediaError(f"ترکیب ویدیو ناموفق بود (ffmpeg): {tail or 'خطای نامشخص'}")
+   313→
+   314→
+   315→# ---------- زیرنویس فارسی روی تصویر (رسم‌الخط + راست‌به‌چپ) ----------
+   316→_FONT_CANDIDATES = ["segoeui.ttf", "SegoeUI.ttf", "tahoma.ttf", "Tahoma.ttf",
+   317→                    "arial.ttf", "arialbd.ttf", "DejaVuSans.ttf", "arial.ttf"]
+   318→
+   319→# اگر Pillow با موتور Raqm ساخته شده باشد، خودش رسم‌الخط و راست‌به‌چپ را
+   320→# درست انجام می‌دهد و باید متنِ خام + direction="rtl" بدهیم؛ وگرنه باید
+   321→# دستی شکل‌دهی (arabic_reshaper) و برگرداندن (bidi) کنیم و متن نمایشی بدهیم.
+   322→# (نکتهٔ حیاتی: دادن متنِ از-قبل-برگردانده به موتور raqm = دوبار برگرداندن!)
+   323→_RAQM: Optional[bool] = None
+   324→
+   325→
+   326→def _has_raqm() -> bool:
+   327→    global _RAQM
+   328→    if _RAQM is None:
+   329→        try:
+   330→            from PIL import features
+   331→            _RAQM = bool(features.check("raqm"))
+   332→        except Exception:
+   333→            _RAQM = False
+   334→    return _RAQM
+   335→
+   336→
+   337→def _draw_text(draw, xy, text, font, **kw):
+   338→    """رندر یک سطر فارسی — هر دو حالتِ موتور Pillow درست کار می‌کند."""
+   339→    if _has_raqm():
+   340→        return draw.text(xy, text, font=font, fill=kw.get("fill"),
+   341→                        direction="rtl", language="fa",
+   342→                        stroke_width=kw.get("stroke_width", 0),
+   343→                        stroke_fill=kw.get("stroke_fill"))
+   344→    return draw.text(xy, _shape_text(text), font=font, **kw)
+   345→
+   346→
+   347→def _text_width(draw, text, font) -> float:
+   348→    if _has_raqm():
+   349→        try:
+   350→            return draw.textlength(text, font=font, direction="rtl", language="fa")
+   351→        except Exception:
+   352→            pass
+   353→    return draw.textlength(_shape_text(text), font=font)
+   354→
+   355→def _load_font(px: int):
+   356→    from PIL import ImageFont
+   357→    for name in _FONT_CANDIDATES:
+   358→        try:
+   359→            return ImageFont.truetype(name, px)
+   360→        except Exception:
+   361→            continue
+   362→    try:
+   363→        from PIL import ImageFont  # noqa
+   364→        return ImageFont.load_default()
+   365→    except Exception:
+   366→        raise MediaError("فونت مناسب برای زیرنویس پیدا نشد (Tahoma/Segoe UI نصب نیست؟)")
+   367→
+   368→
+   369→def _shape_text(text: str) -> str:
+   370→    """فارسی/عربی را برای رندر درست شکل‌دهی و جهت‌دهی می‌کند."""
+   371→    try:
+   372→        import arabic_reshaper
+   373→        from bidi.algorithm import get_display
+   374→        return get_display(arabic_reshaper.reshape(text))
+   375→    except ImportError:
+   376→        return text  # بدون کتابخانه هم انگلیسی درست رندر می‌شود
+   377→
+   378→
+   379→def _compose_scene_image(material: Path, out_png: Path, w: int, h: int,
+   380→                         narration: str, accent: Tuple[int, int, int]) -> None:
+   381→    """تصویر صحنه + نوار زیرنویس فارسی → یک PNG آمادهٔ ویدیو."""
+   382→    from PIL import Image, ImageDraw, ImageEnhance
+   383→    if material and Path(material).exists():
+   384→        img = Image.open(material).convert("RGB")
+   385→        # برش مرکزی به نسبت هدف
+   386→        sr, tr = img.width / img.height, w / h
+   387→        if sr > tr:
+   388→            nw = int(img.height * tr)
+   389→            img = img.crop(((img.width - nw) // 2, 0, (img.width - nw) // 2 + nw, img.height))
+   390→        else:
+   391→            nh = int(img.width / tr)
+   392→            img = img.crop((0, (img.height - nh) // 2, img.width, (img.height - nh) // 2 + nh))
+   393→        img = img.resize((w, h), Image.LANCZOS)
+   394→        img = ImageEnhance.Color(img).enhance(1.08)
+   395→        canvas = img
+   396→    else:
+   397→        # پس‌زمینهٔ گرادیان — وقتی تصویر صحنه در دسترس نیست، صحنه هنوز قابل‌قبول بماند
+   398→        canvas = Image.new("RGB", (w, h))
+   399→        px = canvas.load()
+   400→        for y in range(h):
+   401→            t = y / max(1, h - 1)
+   402→            r = int(14 + (accent[0] // 12) * (1 - t))
+   403→            g = int(18 + (accent[1] // 12) * (1 - t))
+   404→            b = int(24 + (accent[2] // 12) * (1 - t))
+   405→            for x in range(0, w, 16):
+   406→                for dx in range(min(16, w - x)):
+   407→                    px[x + dx, y] = (r, g, b)
+   408→    draw = ImageDraw.Draw(canvas, "RGBA")
+   409→    # نوار نیمه‌شفاف پایین + متنِ شکل‌دهی‌شدهٔ راست‌به‌چپ
+   410→    band_h = max(140, h // 6)
+   411→    base = canvas.convert("RGBA")
+   412→    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+   413→    overlay.paste(Image.new("RGBA", (w, band_h), (8, 10, 14, 168)), (0, h - band_h))
+   414→    canvas = Image.alpha_composite(base, overlay)
+   415→    draw = ImageDraw.Draw(canvas, "RGBA")
+   416→    font = _load_font(max(34, h // 26))
+   417→    # شکستن سطر بر اساس پهنای واقعی — روی متنِ منطقی (راست‌به‌چپ خودش هنگام رندر اعمال می‌شود)
+   418→    max_w = int(w * 0.86)
+   419→    lines, cur = [], ""
+   420→    for word in (narration or "").split(" "):
+   421→        trial = (cur + " " + word).strip()
+   422→        if _text_width(draw, trial, font) <= max_w or not cur:
+   423→            cur = trial
+   424→        else:
+   425→            lines.append(cur)
+   426→            cur = word
+   427→    if cur:
+   428→        lines.append(cur)
+   429→    lines = lines[:3]
+   430→    lh = font.size + max(14, h // 90)
+   431→    total = lh * len(lines)
+   432→    y = h - band_h + (band_h - total) // 2 + h // 200
+   433→    for ln in lines:
+   434→        tw = _text_width(draw, ln, font)
+   435→        _draw_text(draw, ((w - tw) / 2, y), ln, font,
+   436→                   fill=(255, 255, 255, 245),
+   437→                   stroke_width=max(1, h // 900), stroke_fill=(0, 0, 0, 180))
+   438→        y += lh
+   439→    # خط تاکید بالای نوار (رنگ برند)
+   440→    draw.rectangle([0, h - band_h, w, h - band_h + max(4, h // 350)], fill=(*accent, 255))
+   441→    canvas.convert("RGB").save(out_png, "PNG")
+   442→
+   443→
+   444→def _srt_from_words(words: List[Dict[str, Any]], path: Path) -> None:
+   445→    """زیرنویس SRT جداگانه هم ذخیره می‌کنیم (برای پلتفرم‌هایی که فایل کپشن می‌گیرند)."""
+   446→    def _t(s: float) -> str:
+   447→        hh = int(s // 3600); mm = int(s % 3600 // 60); ss = int(s % 60); ms = int((s - int(s)) * 1000)
+   448→        return f"{hh:02d}:{mm:02d}:{ss:02d},{ms:03d}"
+   449→    if not words:
+   450→        return
+   451→    cues, cur = [], []  # cur = لیست (t, d, w)
+   452→    for w in words:
+   453→        if cur and w["t"] - cur[0][0] > 3.5:
+   454→            cues.append((cur[0][0], cur[-1][0] + cur[-1][1], " ".join(x[2] for x in cur)))
+   455→            cur = []
+   456→        cur.append((w["t"], w["d"], w["w"]))
+   457→    if cur:
+   458→        cues.append((cur[0][0], cur[-1][0] + cur[-1][1], " ".join(x[2] for x in cur)))
+   459→    with open(path, "w", encoding="utf-8") as f:
+   460→        for i, (a, b, txt) in enumerate(cues, 1):
+   461→            # SRT باید متنِ منطقیِ خام باشد — پلیرها خودشان رسم‌الخط می‌کنند
+   462→            f.write(f"{i}\n{_t(a)} --> {_t(b)}\n{txt}\n\n")
+   463→
+   464→
+   465→async def generate_video(llm_json: Callable, ai_cfg: Dict[str, Any], *, topic: str,
+   466→                         provider: str, model: str, voice: str = "fa-IR-FaridNeural",
+   467→                         aspect: str = "9:16", seconds: int = 45, material: str = "ai",
+   468→                         motion: str = "zoom", progress: Optional[Callable[[int, str], None]] = None,
+   469→                         images: Optional[List[str]] = None) -> Dict[str, Any]:
+   470→    """ویدیوی کامل با AI — سبک MoneyPrinterTurbo: موضوع بده، ویدیوی آمادهٔ انتشار بگیر."""
+   471→    topic = (topic or "").strip()
+   472→    if not topic:
+   473→        raise MediaError("موضوع ویدیو خالی است")
+   474→    asp = ASPECTS.get(aspect, ASPECTS["9:16"])
+   475→    w, h = asp["w"], asp["h"]
+   476→    seconds = max(15, min(180, int(seconds)))
+   477→    n_scenes = max(3, min(10, seconds // 8))
+   478→    lang = "fa" if str(voice).startswith("fa") else ("ar" if str(voice).startswith("ar") else "en")
+   479→    accent = (16, 185, 129)  # سبز پارس‌ایجنت
+   480→
+   481→    work = VIDEOS_DIR / f"work-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+   482→    work.mkdir(parents=True, exist_ok=True)
+   483→
+   484→    def _report(pct: int, msg: str) -> None:
+   485→        if progress:
+   486→            try:
+   487→                progress(pct, msg)
+   488→            except Exception:
+   489→                pass
+   490→
+   491→    try:
+   492→        # ─── ۱) فیلم‌نامه
+   493→        _report(5, "🧠 فیلم‌نامهٔ صحنه‌ها نوشته می‌شود…")
+   494→        scenes = await _llm_scenes(llm_json, ai_cfg, provider, model, topic, n_scenes, lang, seconds)
+   495→        _report(15, f"📄 فیلم‌نامه آماده شد: {len(scenes)} صحنه")
+   496→
+   497→        # ─── ۲) گویندگی رایگان (edge-tts)
+   498→        audios: List[Dict[str, Any]] = []
+   499→        for i, sc in enumerate(scenes):
+   500→            _report(15 + int(15 * (i + 1) / len(scenes)), f"🗣 گویندگی صحنهٔ {i + 1} از {len(scenes)} …")
+   501→            audios.append(await _tts_scene(sc["narration"], voice, work / f"voice-{i:02d}.mp3"))
+   502→        _report(32, "✅ گویندگی تمام شد")
+   503→
+   504→        # ─── ۳) تصویر هر صحنه
+   505→        lib_images = [MEDIA_DIR / n for n in (images or []) if (MEDIA_DIR / n).exists()]
+   506→        scene_pngs: List[Path] = []
+   507→        for i, sc in enumerate(scenes):
+   508→            pct = 32 + int(40 * (i + 1) / len(scenes))
+   509→            mat: Optional[Path] = None
+   510→            if material in ("library", "mixed") and lib_images:
+   511→                mat = lib_images[i % len(lib_images)]
+   512→            if material == "library" and mat is None:
+   513→                raise MediaError("کتابخانهٔ رسانه خالی است — از تب «رسانه‌ها» عکس بگذارید یا منبع را «AI» کنید")
+   514→            if mat is None or material == "mixed" and random.random() < 0.6:
+   515→                _report(pct, f"🖼 تصویر صحنهٔ {i + 1} با AI ساخته می‌شود…")
+   516→                try:
+   517→                    # سقف زمانی سخت‌گیرانه — اگر تصویرساز گیر کرد، صحنه بدون عکس ادامه می‌دهد
+   518→                    res = await asyncio.wait_for(generate_image(
+   519→                        ai_cfg,
+   520→                        f"{sc['image_prompt']} — cinematic, high quality, no text, no watermark",
+   521→                        provider=ai_cfg.get("image", {}).get("provider", "zai"),
+   522→                        model=ai_cfg.get("image", {}).get("model", ""),
+   523→                        size_key="portrait" if aspect == "9:16" else ("landscape" if aspect == "16:9" else "square"),
+   524→                        out_name=f"scene-{i:02d}",
+   525→                        progress=None), timeout=300)
+   526→                    mat = MEDIA_DIR / res["file"]
+   527→                except (MediaError, asyncio.TimeoutError) as e:
+   528→                    _report(pct, f"⚠ تصویر صحنهٔ {i + 1} ساخته نشد ({str(e)[:60]}) — با پس‌زمینهٔ گرادیان ادامه می‌دهیم")
+   529→                    mat = None
+   530→                except Exception:
+   531→                    mat = None
+   532→                if mat is None:
+   533→                    mat = lib_images[i % len(lib_images)] if lib_images else None
+   534→            # ─── ۴) ترکیب تصویر + زیرنویس فارسی
+   535→            out_png = work / f"scene-{i:02d}.png"
+   536→            await asyncio.to_thread(_compose_scene_image, mat, out_png, w, h, sc["narration"], accent)
+   537→            scene_pngs.append(out_png)
+   538→            _report(pct, f"✅ صحنهٔ {i + 1} آماده شد")
+   539→        _report(74, "🎨 همهٔ صحنه‌ها آماده شد — ترکیب نهایی شروع می‌شود")
+   540→
+   541→        # ─── ۵) ساخت کلیپ هر صحنه (تصویر + صدا) و به‌هم‌چسباندن
+   542→        clips: List[Path] = []
+   543→        for i, (png, au) in enumerate(zip(scene_pngs, audios)):
+   544→            _report(74 + int(18 * (i + 1) / len(scenes)), f"🎬 رندر صحنهٔ {i + 1} از {len(scenes)} …")
+   545→            dur = au["duration"] + 0.75  # نفس‌کشیدن بین صحنه‌ها
+   546→            clip = work / f"clip-{i:02d}.mp4"
+   547→            vf = (f"scale={int(w*1.18)}:{int(h*1.18)}:force_original_aspect_ratio=increase,"
+   548→                  f"crop={int(w*1.18)}:{int(h*1.18)},"
+   549→                  f"zoompan=z='min(zoom+{0.00055 if motion != 'static' else 0.0:.5f},1.12)':"
+   550→                  f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d={int(dur*30)}:s={w}x{h}:fps=30,"
+   551→                  f"fade=t=in:st=0:d=0.35,fade=t=out:st={max(0.0, dur-0.35):.2f}:d=0.35")
+   552→            await asyncio.to_thread(
+   553→                _run_ffmpeg,
+   554→                ["-loop", "1", "-i", str(png), "-i", str(au["file"]),
+   555→                 "-vf", vf, "-t", f"{dur:.3f}",
+   556→                 "-c:v", "libx264", "-preset", "veryfast", "-tune", "stillimage",
+   557→                 "-c:a", "aac", "-b:a", "192k", "-pix_fmt", "yuv420p", "-shortest",
+   558→                 "-threads", "4", str(clip)])
+   559→            clips.append(clip)
+   560→
+   561→        concat_list = work / "list.txt"
+   562→        concat_list.write_text("\n".join(f"file '{c.name}'" for c in clips), encoding="utf-8")
+   563→        raw_out = work / "raw.mp4"
+   564→        await asyncio.to_thread(_run_ffmpeg, ["-f", "concat", "-safe", "0", "-i", str(concat_list),
+   565→                                              "-c", "copy", str(raw_out)])
+   566→        _report(93, "🎵 افزودن موسیقی پس‌زمینه (در صورت وجود) و خروجی نهایی…")
+   567→
+   568→        # ─── ۶) موسیقی پس‌زمینهٔ اختیاری + خروجی نهایی در «رسانه‌ها»
+   569→        music = None
+   570→        if material != "nomusic":
+   571→            mp3s = [f for f in MUSIC_DIR.glob("*.mp3")]
+   572→            if mp3s:
+   573→                music = random.choice(mp3s)
+   574→        final_name = f"ai-video-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{_slug(topic)}.mp4"
+   575→        final_path = MEDIA_DIR / final_name
+   576→        if music:
+   577→            total = clips and sum(a["duration"] + 0.75 for a in audios) or 60
+   578→            await asyncio.to_thread(
+   579→                _run_ffmpeg,
+   580→                ["-i", str(raw_out), "-i", str(music),
+   581→                 "-filter_complex",
+   582→                 f"[1:a]volume=0.13,afade=t=out:st={max(0, total-3):.1f}:d=3,aloop=loop=-1:size=2e+09[bg];"
+   583→                 f"[0:a][bg]amix=inputs=2:duration=first:dropout_transition=3[a]",
+   584→                 "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+   585→                 str(final_path)])
+   586→        else:
+   587→            final_path.write_bytes(raw_out.read_bytes())
+   588→
+   589→        # SRT کنار ویدیو + کاور از صحنهٔ اول
+   590→        _srt_from_words([w for a in audios for w in a["words"]], final_path.with_suffix(".srt"))
+   591→        cover = final_path.with_suffix(".cover.png")
+   592→        try:
+   593→            cover.write_bytes(scene_pngs[0].read_bytes())
+   594→        except Exception:
+   595→            pass
+   596→        _report(100, f"✅ ویدیو آماده است: {final_name}")
+   597→        return {
+   598→            "ok": True, "file": final_name, "url": f"/media/{urllib.parse.quote(final_name)}",
+   599→            "cover": f"/media/{urllib.parse.quote(cover.name)}",
+   600→            "scenes": [{"narration": s["narration"]} for s in scenes],
+   601→            "voice": voice, "aspect": aspect,
+   602→            "duration": round(sum(a["duration"] + 0.75 for a in audios), 1),
+   603→        }
+   604→    finally:
+   605→        # پوشهٔ کاری موقت را پاک می‌کنیم (خروجی نهایی در media/ است)
+   606→        try:
+   607→            import shutil
+   608→            shutil.rmtree(work, ignore_errors=True)
+   609→        except Exception:
+   610→            pass
+   611→

@@ -1,0 +1,1123 @@
+     1→# -*- coding: utf-8 -*-
+     2→"""
+     3→ParsAgent — هستهٔ هوش مصنوعی (تب «🧠 هوش مصنوعی»)
+     4→=====================================================
+     5→
+     6→یک ایجنت کاملاً خودمختار: شما فقط ایده یا ماموریت را می‌گویید؛ او:
+     7→
+     8→  ۱) برنامهٔ اجرایی می‌سازد (با LLM)
+     9→  ۲) محتوای هر پلتفرم را با قوانین همان پلتفرم تولید می‌کند
+    10→  ۳) پست‌ها را در زمان‌بندی انتشار می‌گذارد (یا بلافاصله منتشر می‌کند)
+    11→  ۴) استراتژی فالو را تصمیم می‌گیرد: چند نفر، چه ساعتی، از کجا
+    12→  ۵) آخر کار گزارش مدیریتی فارسی می‌دهد (فوری یا در زمان مقرر)
+    13→
+    14→نسخهٔ ۲.۴.۰ — دو بازوی جدید به ایجنت اضافه شد:
+    15→  • 🎨 ساخت عکس با AI (Z.ai GLM-Image / CogView-4 / DALL·E / Pollinations رایگان)
+    16→  • 🎬 چاپخانهٔ ویدیو به سبک MoneyPrinterTurbo: موضوع بده، ویدیوی کامل
+    17→    (فیلم‌نامه + گوینده + تصویر + زیرنویس فارسی + موسیقی) تحویل بگیر
+    18→  • 💬 پاسخ‌گوی خودکار دایرکت در هر پلتفرم — طبیعی، با شخصیت شما (dm_reply.py)
+    19→
+    20→سرویس‌های پشتیبانی‌شده (رایگان و پولی — همه از تب تنظیمات/هوش مصنوعی):
+    21→  • Z.ai (GLM) — پیشنهادی، مدل‌های Flash رایگان‌اند
+    22→  • Z.ai طرح Coding (GLM Coding Plan)
+    23→  • OpenAI · Anthropic Claude · Google Gemini · Groq · DeepSeek
+    24→  • OpenRouter (تجمیع‌کنندهٔ ده‌ها مدل رایگان/پولی)
+    25→  • هر اندپوینت سازگار با OpenAI (مثل Ollama لوکال)
+    26→
+    27→فقط با کتابخانهٔ استاندارد پایتون — هیچ پیش‌نیاز جدیدی نصب نمی‌شود.
+    28→"""
+    29→from __future__ import annotations
+    30→
+    31→import asyncio
+    32→import json
+    33→import random
+    34→import re
+    35→import threading
+    36→import urllib.error
+    37→import urllib.request
+    38→import uuid
+    39→from datetime import datetime, timedelta
+    40→from pathlib import Path
+    41→from typing import Any, Awaitable, Callable, Dict, List, Optional
+    42→
+    43→BASE = Path(__file__).resolve().parent
+    44→F_MISSIONS = BASE / "config" / "missions.json"
+    45→
+    46→# برای آدرس‌های لوکال (Ollama و…) پروکسی نباید دخالت کند؛ برای APIهای
+    47→# اینترنتی همان تنظیم پروکسیِ سیستم (VPN کاربر) به کار می‌رود.
+    48→_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    49→
+    50→
+    51→class AgentError(Exception):
+    52→    """خطای قابل‌فهم برای کاربر."""
+    53→
+    54→
+    55→# ════════════════════════════════════════════════════════════════ کاتالوگ سرویس‌ها
+    56→# ترتیب مهم است: Z.ai اولِ لیست است (پیشنهاد ما). tag → چیپ نمایش در پنل.
+    57→PROVIDERS: Dict[str, Dict[str, Any]] = {
+    58→    "zai": {
+    59→        "name": "Z.ai (GLM)",
+    60→        "kind": "openai",
+    61→        "base": "https://api.z.ai/api/paas/v4",
+    62→        "docs": "https://z.ai",
+    63→        "note": "پیشنهادی — مدل‌های GLM؛ دو مدل Flash کاملاً رایگان‌اند",
+    64→        "key_field": "zai",
+    65→        "models": [
+    66→            {"id": "glm-5.3", "name": "GLM-5.3", "tag": "پیشرفته", "note": "پرچمدار جدید Z.ai — بهترین کیفیت"},
+    67→            {"id": "glm-4.6", "name": "GLM-4.6", "tag": "پیشرفته", "note": "نسل جدید — کیفیت عالی"},
+    68→            {"id": "glm-4.5", "name": "GLM-4.5", "tag": "پولی", "note": "نسخهٔ پایدار نسل قبل"},
+    69→            {"id": "glm-4.5-air", "name": "GLM-4.5-Air", "tag": "اقتصادی", "note": "سبک و ارزان"},
+    70→            {"id": "glm-4.5-flash", "name": "GLM-4.5-Flash", "tag": "رایگان", "note": "رایگان و سریع — برای شروع"},
+    71→            {"id": "glm-4-flash-250414", "name": "GLM-4-Flash", "tag": "رایگان", "note": "رایگان — نسل قبل"},
+    72→        ],
+    73→    },
+    74→    "zai_coding": {
+    75→        "name": "Z.ai — طرح Coding",
+    76→        "kind": "openai",
+    77→        "base": "https://api.z.ai/api/coding/paas/v4",
+    78→        "docs": "https://z.ai/subscribe",
+    79→        "note": "برای مشترکان GLM Coding Plan — همان کلید Z.ai",
+    80→        "key_field": "zai",
+    81→        "models": [
+    82→            {"id": "glm-4.6", "name": "GLM-4.6 (Coding)", "tag": "پولی", "note": "با اشتراک ماهانهٔ Coding Plan"},
+    83→            {"id": "glm-4.5", "name": "GLM-4.5 (Coding)", "tag": "پولی", "note": "با اشتراک ماهانهٔ Coding Plan"},
+    84→        ],
+    85→    },
+    86→    "openai": {
+    87→        "name": "OpenAI",
+    88→        "kind": "openai",
+    89→        "base": "https://api.openai.com/v1",
+    90→        "docs": "https://platform.openai.com",
+    91→        "note": "GPT — پولی",
+    92→        "key_field": "openai",
+    93→        "models": [
+    94→            {"id": "gpt-5", "name": "GPT-5", "tag": "پیشرفته", "note": "پرچمدار OpenAI"},
+    95→            {"id": "gpt-5-mini", "name": "GPT-5 mini", "tag": "اقتصادی", "note": "سریع و ارزان"},
+    96→            {"id": "gpt-4.1", "name": "GPT-4.1", "tag": "پولی", "note": "نسخهٔ پایدار"},
+    97→            {"id": "gpt-4.1-mini", "name": "GPT-4.1 mini", "tag": "اقتصادی", "note": "سبک"},
+    98→            {"id": "gpt-4o", "name": "GPT-4o", "tag": "پولی", "note": "چندوجهی نسل قبل"},
+    99→            {"id": "gpt-4o-mini", "name": "GPT-4o mini", "tag": "اقتصادی", "note": "کم‌هزینه"},
+   100→        ],
+   101→    },
+   102→    "anthropic": {
+   103→        "name": "Anthropic Claude",
+   104→        "kind": "anthropic",
+   105→        "base": "https://api.anthropic.com/v1",
+   106→        "docs": "https://console.anthropic.com",
+   107→        "note": "کلود — پولی",
+   108→        "key_field": "anthropic",
+   109→        "models": [
+   110→            {"id": "claude-sonnet-4-5", "name": "Claude Sonnet 4.5", "tag": "پیشرفته", "note": "تعادل کیفیت/قیمت"},
+   111→            {"id": "claude-opus-4-1", "name": "Claude Opus 4.1", "tag": "پولی", "note": "بالاترین کیفیت"},
+   112→            {"id": "claude-haiku-4-5", "name": "Claude Haiku 4.5", "tag": "اقتصادی", "note": "سریع و ارزان"},
+   113→        ],
+   114→    },
+   115→    "gemini": {
+   116→        "name": "Google Gemini",
+   117→        "kind": "gemini",
+   118→        "base": "https://generativelanguage.googleapis.com/v1beta",
+   119→        "docs": "https://aistudio.google.com",
+   120→        "note": "جِمینی — Fluent رایگان در AI Studio",
+   121→        "key_field": "gemini",
+   122→        "models": [
+   123→            {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "tag": "پیشرفته", "note": "پرچمدار گوگل"},
+   124→            {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "tag": "رایگان", "note": "سریع و اقتصادی"},
+   125→            {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "tag": "رایگان", "note": "نسل قبل"},
+   126→        ],
+   127→    },
+   128→    "groq": {
+   129→        "name": "Groq",
+   130→        "kind": "openai",
+   131→        "base": "https://api.groq.com/openai/v1",
+   132→        "docs": "https://console.groq.com",
+   133→        "note": "سریع‌ترین اینترنت — با سطح رایگان سخاوتمندانه",
+   134→        "key_field": "groq",
+   135→        "models": [
+   136→            {"id": "llama-3.3-70b-versatile", "name": "Llama 3.3 70B", "tag": "رایگان", "note": "باکیفیت و رایگان"},
+   137→            {"id": "llama-3.1-8b-instant", "name": "Llama 3.1 8B", "tag": "رایگان", "note": "فوری"},
+   138→            {"id": "deepseek-r1-distill-llama-70b", "name": "DeepSeek R1 Distill", "tag": "رایگان", "note": "استدلالی"},
+   139→            {"id": "qwen/qwen3-32b", "name": "Qwen3 32B", "tag": "رایگان", "note": "چندزبانه"},
+   140→            {"id": "moonshotai/kimi-k2-instruct", "name": "Kimi K2", "tag": "رایگان", "note": "مدل بزرگ جدید"},
+   141→        ],
+   142→    },
+   143→    "deepseek": {
+   144→        "name": "DeepSeek",
+   145→        "kind": "openai",
+   146→        "base": "https://api.deepseek.com/v1",
+   147→        "docs": "https://platform.deepseek.com",
+   148→        "note": "بسیار ارزان",
+   149→        "key_field": "deepseek",
+   150→        "models": [
+   151→            {"id": "deepseek-chat", "name": "DeepSeek V3", "tag": "اقتصادی", "note": "ارزان و توانمند"},
+   152→            {"id": "deepseek-reasoner", "name": "DeepSeek R1", "tag": "اقتصادی", "note": "استدلال گام‌به‌گام"},
+   153→        ],
+   154→    },
+   155→    "openrouter": {
+   156→        "name": "OpenRouter",
+   157→        "kind": "openai",
+   158→        "base": "https://openrouter.ai/api/v1",
+   159→        "docs": "https://openrouter.ai",
+   160→        "note": "تجمیع‌کنندهٔ صدها مدل — خیلی از مدل‌ها «:free» رایگان‌اند",
+   161→        "key_field": "openrouter",
+   162→        "models": [
+   163→            {"id": "deepseek/deepseek-chat-v3-0324:free", "name": "DeepSeek V3 (رایگان)", "tag": "رایگان", "note": "نسخهٔ رایگان OpenRouter"},
+   164→            {"id": "meta-llama/llama-3.3-70b-instruct:free", "name": "Llama 3.3 70B (رایگان)", "tag": "رایگان", "note": "نسخهٔ رایگان"},
+   165→            {"id": "qwen/qwen3-235b-a22b:free", "name": "Qwen3 235B (رایگان)", "tag": "رایگان", "note": "مدل بزرگ رایگان"},
+   166→            {"id": "google/gemini-2.0-flash-exp:free", "name": "Gemini 2.0 Flash (رایگان)", "tag": "رایگان", "note": "رایگان"},
+   167→            {"id": "openai/gpt-4o-mini", "name": "GPT-4o mini", "tag": "پولی", "note": "از طریق OpenRouter"},
+   168→            {"id": "anthropic/claude-sonnet-4.5", "name": "Claude Sonnet 4.5", "tag": "پولی", "note": "از طریق OpenRouter"},
+   169→        ],
+   170→    },
+   171→    "custom": {
+   172→        "name": "سرویس سفارشی (سازگار با OpenAI)",
+   173→        "kind": "openai",
+   174→        "base": "",
+   175→        "docs": "",
+   176→        "note": "هر اندپوینت OpenAI-سازگار — مثل Ollama لوکال (http://127.0.0.1:11434/v1)",
+   177→        "key_field": "custom",
+   178→        "models": [],  # از تنظیمات خوانده می‌شود
+   179→    },
+   180→}
+   181→
+   182→# ════════════════════════════════════════════════════════════════ قوانین پلتفرم‌ها
+   183→PLATFORM_INFO: Dict[str, Dict[str, Any]] = {
+   184→    "instagram": {"name": "اینستاگرام", "max_chars": 2200, "hashtags": "۸ تا ۱۲", "style": "کپشن جذاب، سطرهای کوتاه، ایموجی",
+   185→                  "post_action": "post_photo", "needs_media": True, "is_messenger": False},
+   186→    "twitter": {"name": "توییتر (X)", "max_chars": 280, "hashtags": "۱ تا ۲", "style": "تند و کوتاه",
+   187→                "post_action": "tweet", "needs_media": False, "is_messenger": False},
+   188→    "telegram": {"name": "تلگرام", "max_chars": 4000, "hashtags": "۳ تا ۵", "style": "پیام کانال با CTA",
+   189→                 "post_action": "send_message", "needs_media": False, "is_messenger": True},
+   190→    "facebook": {"name": "فیسبوک", "max_chars": 2000, "hashtags": "۲ تا ۴", "style": "مطلب دوستانه",
+   191→                 "post_action": "post_photo", "needs_media": True, "is_messenger": False},
+   192→    "linkedin": {"name": "لینکدین", "max_chars": 1300, "hashtags": "۳ تا ۵", "style": "حرفه‌ای و مقاله‌وار",
+   193→                 "post_action": "post", "needs_media": False, "is_messenger": False},
+   194→    "bale": {"name": "بله", "max_chars": 4000, "hashtags": "۲ تا ۴", "style": "پیام کانال",
+   195→             "post_action": "send_message", "needs_media": False, "is_messenger": True},
+   196→    "rubika": {"name": "روبیکا", "max_chars": 4000, "hashtags": "۲ تا ۴", "style": "پیام کانال",
+   197→               "post_action": "send_message", "needs_media": False, "is_messenger": True},
+   198→    # ۲.۱۱.۰ — واتساپ: پیام‌رسان شخصی؛ برای مخاطبین/گروه‌های خودتان
+   199→    "whatsapp": {"name": "واتساپ", "max_chars": 3500, "hashtags": "بدون هشتگ (چت است)", "style": "پیام چت کوتاه و شخصی — بدون لینک‌بارانی",
+   200→                 "post_action": "send_message", "needs_media": False, "is_messenger": True},
+   201→}
+   202→
+   203→# سقف امن فالو روزانه (از راهنمای طبیعی‌جلو کردن پنل) + شناسهٔ اکشن فالو
+   204→FOLLOW_CAPS: Dict[str, Dict[str, Any]] = {
+   205→    "instagram": {"cap": 150, "action": "follow", "name": "فالو اینستاگرام"},
+   206→    "twitter": {"cap": 100, "action": "follow", "name": "فالو توییتر"},
+   207→    "facebook": {"cap": 15, "action": "friend_request", "name": "درخواست دوستی فیسبوک"},
+   208→    "linkedin": {"cap": 20, "action": "connect", "name": "درخواست اتصال لینکدین"},
+   209→}
+   210→
+   211→TOOL_NAMES = {
+   212→    "generate_content": "تولید محتوا",
+   213→    "generate_image": "🎨 ساخت عکس با AI",
+   214→    "generate_video": "🎬 ساخت ویدیو (چاپخانه)",
+   215→    "dm_autoreply": "💬 پاسخ‌گوی دایرکت",
+   216→    "schedule_publish": "زمان‌بندی انتشار",
+   217→    "publish_now": "انتشار فوری",
+   218→    "follow_strategy": "استراتژی فالو",
+   219→    "wait_report": "گزارش زمان‌دار",
+   220→    "report": "گزارش نهایی",
+   221→    "status_check": "بررسی وضعیت",
+   222→}
+   223→
+   224→DEFAULT_HOURS = [10, 13, 16, 19, 21]
+   225→
+   226→
+   227→# ════════════════════════════════════════════════════════════════ ابزار HTTP و JSON
+   228→def _http_json(url: str, headers: Dict[str, str], payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
+   229→    body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+   230→    req = urllib.request.Request(url, data=body, method="POST",
+   231→                                 headers={"Content-Type": "application/json",
+   232→                                          "User-Agent": "ParsAgent/2.3", **headers})
+   233→    opener = _DIRECT if ("127.0.0.1" in url or "localhost" in url) else urllib.request.build_opener()
+   234→    try:
+   235→        with opener.open(req, timeout=timeout) as r:
+   236→            return json.loads(r.read().decode("utf-8"))
+   237→    except urllib.error.HTTPError as e:
+   238→        try:
+   239→            detail = e.read().decode("utf-8", "ignore")[:400]
+   240→        except Exception:
+   241→            detail = ""
+   242→        m = re.search(r'"message"\s*:\s*"([^"]+)"', detail)
+   243→        hint = m.group(1) if m else detail[:160]
+   244→        raise AgentError(f"خطای {e.code} از سرویس هوش مصنوعی{(' — ' + hint) if hint else ''}")
+   245→    except urllib.error.URLError as e:
+   246→        raise AgentError(f"ارتباط با سرویس برقرار نشد: {e.reason} — اینترنت/VPN را چک کنید")
+   247→    except json.JSONDecodeError:
+   248→        raise AgentError("پاسخ سرویس قابل خواندن نبود")
+   249→
+   250→
+   251→def extract_json(text: str) -> Optional[Any]:
+   252→    """اولین JSON متعادلِ داخل متن را بیرون می‌کشد (حتی اگر داخل ``` باشد)."""
+   253→    if not text:
+   254→        return None
+   255→    t = re.sub(r"```(?:json)?", "", text).strip()
+   256→    start = t.find("{")
+   257→    while start != -1:
+   258→        depth, in_str, esc = 0, False, False
+   259→        for i in range(start, len(t)):
+   260→            ch = t[i]
+   261→            if in_str:
+   262→                if esc:
+   263→                    esc = False
+   264→                elif ch == "\\":
+   265→                    esc = True
+   266→                elif ch == '"':
+   267→                    in_str = False
+   268→            else:
+   269→                if ch == '"':
+   270→                    in_str = True
+   271→                elif ch == "{":
+   272→                    depth += 1
+   273→                elif ch == "}":
+   274→                    depth -= 1
+   275→                    if depth == 0:
+   276→                        try:
+   277→                            return json.loads(t[start:i + 1])
+   278→                        except Exception:
+   279→                            break
+   280→        start = t.find("{", start + 1)
+   281→    return None
+   282→
+   283→
+   284→def _now_iso() -> str:
+   285→    return datetime.now().isoformat(timespec="seconds")
+   286→
+   287→
+   288→# ════════════════════════════════════════════════════════════════ کلاینت LLM
+   289→async def llm_chat(ai_cfg: Dict[str, Any], provider: str, model: str,
+   290→                   messages: List[Dict[str, str]], *, temperature: float = 0.7,
+   291→                   max_tokens: int = 4096, json_mode: bool = False) -> str:
+   292→    """گفتگو با هر سرویس — یکسان برای همه (رابط OpenAI/Anthropic/Gemini)."""
+   293→    p = PROVIDERS.get(provider)
+   294→    if not p:
+   295→        raise AgentError(f"سرویس نامعتبر: {provider}")
+   296→    if provider == "custom":
+   297→        base = (ai_cfg.get("custom_base") or "").strip().rstrip("/")
+   298→        model = (ai_cfg.get("custom_model") or "").strip() or model
+   299→        if not base:
+   300→            raise AgentError("آدرس سرویس سفارشی در تنظیمات خالی است")
+   301→    else:
+   302→        base = p["base"]
+   303→    key = (ai_cfg.get("api_keys") or {}).get(p.get("key_field", provider), "")
+   304→    if not key and provider != "custom":
+   305→        raise AgentError(f"کلید API «{p['name']}» در تنظیمات وارد نشده — از تب تنظیمات ← هوش مصنوعی")
+   306→
+   307→    kind = p["kind"]
+   308→    if kind == "openai":
+   309→        payload: Dict[str, Any] = {"model": model, "messages": messages,
+   310→                                    "temperature": temperature, "max_tokens": max_tokens}
+   311→        if json_mode:
+   312→            payload["response_format"] = {"type": "json_object"}
+   313→        headers = {"Authorization": f"Bearer {key}"}
+   314→        if provider == "openrouter":
+   315→            headers["HTTP-Referer"] = "https://parsagent.local"
+   316→            headers["X-Title"] = "ParsAgent"
+   317→        url = base + "/chat/completions"
+   318→    elif kind == "anthropic":
+   319→        system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+   320→        payload = {"model": model, "max_tokens": max(1024, min(max_tokens, 8000)),
+   321→                   "temperature": temperature,
+   322→                   "messages": [{"role": m["role"], "content": m["content"]}
+   323→                                for m in messages if m["role"] != "system"]}
+   324→        if system:
+   325→            payload["system"] = system
+   326→        headers = {"x-api-key": key, "anthropic-version": "2023-06-01"}
+   327→        url = base + "/messages"
+   328→    else:  # gemini
+   329→        system = "\n\n".join(m["content"] for m in messages if m["role"] == "system")
+   330→        payload = {"contents": [{"role": "model" if m["role"] == "assistant" else "user",
+   331→                                 "parts": [{"text": m["content"]}]}
+   332→                                for m in messages if m["role"] != "system"],
+   333→                   "generationConfig": {"temperature": temperature, "maxOutputTokens": max_tokens}}
+   334→        if system:
+   335→            payload["systemInstruction"] = {"parts": [{"text": system}]}
+   336→        if json_mode:
+   337→            payload["generationConfig"]["responseMimeType"] = "application/json"
+   338→        headers = {"x-goog-api-key": key}
+   339→        url = f"{base}/models/{model}:generateContent"
+   340→
+   341→    last_err: Optional[AgentError] = None
+   342→    for attempt in range(2):
+   343→        try:
+   344→            data = await asyncio.to_thread(_http_json, url, headers, payload)
+   345→            if kind == "openai":
+   346→                return data["choices"][0]["message"]["content"] or ""
+   347→            if kind == "anthropic":
+   348→                return "".join(b.get("text", "") for b in data.get("content", []))
+   349→            return data["candidates"][0]["content"]["parts"][0]["text"]
+   350→        except AgentError as e:
+   351→            last_err = e
+   352→            if attempt == 0 and "خطای 429" in str(e):
+   353→                await asyncio.sleep(3)
+   354→                continue
+   355→            raise
+   356→        except (KeyError, IndexError, TypeError):
+   357→            raise AgentError("پاسخ سرویس ساختار مورد انتظار را نداشت (نام مدل درست است؟)")
+   358→    raise last_err or AgentError("خطای ناشناخته در سرویس هوش مصنوعی")
+   359→
+   360→
+   361→async def llm_json(ai_cfg: Dict[str, Any], provider: str, model: str,
+   362→                   messages: List[Dict[str, str]], *, temperature: float = 0.4) -> Dict[str, Any]:
+   363→    """گفتگو با خروجی تضمینی JSON — اگر پاسخ خراب بود یک‌بار تلاش مجدد."""
+   364→    for attempt in range(2):
+   365→        text = await llm_chat(ai_cfg, provider, model, messages,
+   366→                              temperature=temperature, json_mode=True)
+   367→        data = extract_json(text)
+   368→        if isinstance(data, dict):
+   369→            return data
+   370→        if attempt == 0:
+   371→            messages = messages + [
+   372→                {"role": "assistant", "content": text[:2000]},
+   373→                {"role": "user", "content": "پاسخ قبلی JSON معتبر نبود. فقط و فقط یک JSON درست و کامل بده — بدون هیچ متن اضافه."},
+   374→            ]
+   375→    raise AgentError("مدل پاسخ JSON درست نداد — دوباره تلاش کنید یا مدل بهتری انتخاب کنید")
+   376→
+   377→
+   378→# ════════════════════════════════════════════════════════════════ فروشگاه ماموریت‌ها
+   379→class MissionStore:
+   380→    def __init__(self, path: Path):
+   381→        self.path = path
+   382→        self.lock = threading.Lock()
+   383→        try:
+   384→            self.path.parent.mkdir(parents=True, exist_ok=True)
+   385→        except Exception:
+   386→            pass
+   387→
+   388→    def load(self) -> List[Dict[str, Any]]:
+   389→        try:
+   390→            data = json.loads(self.path.read_text(encoding="utf-8"))
+   391→            return data if isinstance(data, list) else []
+   392→        except Exception:
+   393→            return []
+   394→
+   395→    def save(self, missions: List[Dict[str, Any]]) -> None:
+   396→        with self.lock:
+   397→            tmp = self.path.with_suffix(".tmp")
+   398→            tmp.write_text(json.dumps(missions, ensure_ascii=False, indent=1), encoding="utf-8")
+   399→            tmp.replace(self.path)
+   400→
+   401→    def get(self, mid: str) -> Optional[Dict[str, Any]]:
+   402→        return next((m for m in self.load() if m.get("id") == mid), None)
+   403→
+   404→    def upsert(self, mission: Dict[str, Any]) -> None:
+   405→        missions = self.load()
+   406→        for i, m in enumerate(missions):
+   407→            if m.get("id") == mission["id"]:
+   408→                missions[i] = mission
+   409→                break
+   410→        else:
+   411→            missions.insert(0, mission)
+   412→        self.save(missions)
+   413→
+   414→
+   415→# ════════════════════════════════════════════════════════════════ ایجنت خودمختار
+   416→class AgentSystem:
+   417→    """مغز ParsAgent — ماموریت می‌گیرد، برنامه می‌سازد و تا گزارش نهایی اجرا می‌کند."""
+   418→
+   419→    def __init__(self):
+   420→        self.store = MissionStore(F_MISSIONS)
+   421→        self.runners: Dict[str, "asyncio.Task[None]"] = {}
+   422→        self.ctx: Dict[str, Any] = {}
+   423→
+   424→    # -------------------------------------------------- اتصال به پنل (تزریق وابستگی)
+   425→    def configure(self, *, run_action: Callable, add_schedule: Callable, get_settings: Callable,
+   426→                  save_settings: Callable, broadcast: Callable, log: Callable,
+   427→                  media_images: Callable, active_platforms: Callable,
+   428→                  generate_media_images: Optional[Callable] = None,
+   429→                  generate_media_video: Optional[Callable] = None,
+   430→                  dm_status: Optional[Callable] = None, dm_configure: Optional[Callable] = None,
+   431→                  dm_round: Optional[Callable] = None) -> None:
+   432→        self.ctx = {
+   433→            "run_action": run_action, "add_schedule": add_schedule,
+   434→            "get_settings": get_settings, "save_settings": save_settings,
+   435→            "broadcast": broadcast, "log": log, "media_images": media_images,
+   436→            "active_platforms": active_platforms,
+   437→            "generate_media_images": generate_media_images,
+   438→            "generate_media_video": generate_media_video,
+   439→            "dm_status": dm_status, "dm_configure": dm_configure, "dm_round": dm_round,
+   440→        }
+   441→
+   442→    def _ai_cfg(self) -> Dict[str, Any]:
+   443→        return self.ctx["get_settings"]().get("ai", {})
+   444→
+   445→    def _active_platforms(self) -> List[str]:
+   446→        try:
+   447→            return list(self.ctx["active_platforms"]())
+   448→        except Exception:
+   449→            return list(PLATFORM_INFO.keys())
+   450→
+   451→    def _alog(self, m: Dict[str, Any], msg: str, level: str = "info", step: str = "") -> None:
+   452→        entry = {"t": datetime.now().strftime("%H:%M:%S"), "level": level,
+   453→                 "step": step or TOOL_NAMES.get("", ""), "msg": msg}
+   454→        m["log"].append(entry)
+   455→        m["log"] = m["log"][-80:]
+   456→        m["updated_at"] = _now_iso()
+   457→        try:
+   458→            self.ctx["log"](f"🧠 [{m.get('title') or m['id'][:8]}] {msg}", level if level in ("warn", "error") else "info")
+   459→        except Exception:
+   460→            pass
+   461→
+   462→    async def _emit(self, m: Dict[str, Any]) -> None:
+   463→        self.store.upsert(m)
+   464→        try:
+   465→            await self.ctx["broadcast"]({"type": "agent", "mission": self.summarize(m)})
+   466→        except Exception:
+   467→            pass
+   468→
+   469→    # -------------------------------------------------- کاتالوگ / تست / چت
+   470→    def catalog(self) -> Dict[str, Any]:
+   471→        ai = self._ai_cfg()
+   472→        keys = ai.get("api_keys") or {}
+   473→        out = []
+   474→        for pid, p in PROVIDERS.items():
+   475→            models = list(p["models"])
+   476→            if pid == "custom":
+   477→                cm = (ai.get("custom_model") or "").strip()
+   478→                models = [{"id": cm or "Custom Model", "name": cm or "مدل سفارشی",
+   479→                          "tag": "خودتان", "note": "از تنظیمات ← هوش مصنوعی تغییر دهید"}]
+   480→            out.append({
+   481→                "id": pid, "name": p["name"], "note": p["note"], "docs": p["docs"],
+   482→                "has_key": bool(keys.get(p.get("key_field", pid))),
+   483→                "models": models,
+   484→            })
+   485→        return {"providers": out}
+   486→
+   487→    async def test(self, provider: str) -> Dict[str, Any]:
+   488→        name = PROVIDERS.get(provider, {}).get("name", provider)
+   489→        await llm_chat(self._ai_cfg(), provider, self._default_model(provider),
+   490→                       [{"role": "user", "content": "فقط یک کلمه بنویس: OK"}],
+   491→                       temperature=0.0, max_tokens=16)
+   492→        return {"ok": True, "message": f"✅ {name} وصل است و جواب می‌دهد"}
+   493→
+   494→    def _default_model(self, provider: str) -> str:
+   495→        if provider == "custom":
+   496→            return (self._ai_cfg().get("custom_model") or "").strip() or "custom"
+   497→        models = PROVIDERS.get(provider, {}).get("models") or []
+   498→        return (models[0]["id"] if models else "glm-4.6")
+   499→
+   500→    async def chat(self, provider: str, model: str, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+   501→        system = {"role": "system", "content":
+   502→                  "تو دستیار هوشمند ParsAgent هستی — نرم‌افزار اتوماسیون ۷ پلتفرم شبکهٔ اجتماعی "
+   503→                  "(اینستاگرام، توییتر، تلگرام، فیسبوک، لینکدین، بله، روبیکا). "
+   504→                  "جواب‌ها کوتاه، دقیق و فارسی؛ اگر از قابلیت‌های پنل می‌پرسند، به تب‌های پنل هم اشاره کن."}
+   505→        reply = await llm_chat(self._ai_cfg(), provider, model, [system] + messages[-14:])
+   506→        return {"ok": True, "reply": reply.strip()}
+   507→
+   508→    # -------------------------------------------------- چرخهٔ حیات ماموریت
+   509→    async def create_mission(self, instruction: str, provider: Optional[str] = None,
+   510→                             model: Optional[str] = None, autonomy: Optional[str] = None) -> Dict[str, Any]:
+   511→        ai = self._ai_cfg()
+   512→        provider = provider or ai.get("provider", "zai")
+   513→        model = (model or "").strip() or (ai.get("model") if ai.get("provider") == provider else "") \
+   514→            or self._default_model(provider)
+   515→        autonomy = autonomy or ai.get("autonomy", "semi")
+   516→        if autonomy not in ("manual", "semi", "auto"):
+   517→            autonomy = "semi"
+   518→        m = {
+   519→            "id": "m" + uuid.uuid4().hex[:10], "title": "ماموریت جدید",
+   520→            "instruction": (instruction or "").strip(),
+   521→            "provider": provider, "model": model, "autonomy": autonomy,
+   522→            "status": "planning", "created_at": _now_iso(), "updated_at": _now_iso(),
+   523→            "plan": None, "step_index": 0, "approve_ok": False, "pause_flag": False,
+   524→            "posts": [], "scheduled": [], "published": [], "report": None, "log": [],
+   525→        }
+   526→        if not m["instruction"]:
+   527→            raise AgentError("متن ماموریت خالی است — ایده یا دستور خود را بنویسید")
+   528→        self._alog(m, f"ماموریت ساخته شد — مدل: {provider}/{model} · خودمختاری: {autonomy}")
+   529→        self.store.upsert(m)
+   530→        self._launch(m["id"])
+   531→        return m
+   532→
+   533→    def _launch(self, mid: str) -> None:
+   534→        old = self.runners.get(mid)
+   535→        if old and not old.done():
+   536→            return
+   537→        self.runners[mid] = asyncio.create_task(self._runner(mid))
+   538→
+   539→    async def control(self, mid: str, cmd: str) -> Dict[str, Any]:
+   540→        m = self.store.get(mid)
+   541→        if not m:
+   542→            raise AgentError("ماموریت پیدا نشد")
+   543→        if cmd == "approve":
+   544→            if m["status"] != "wait_approval":
+   545→                raise AgentError("این ماموریت منتظر تأیید نیست")
+   546→            m["approve_ok"] = True
+   547→            self._alog(m, "✅ کاربر برنامه را تأیید کرد — ادامه می‌دهم", "ok")
+   548→            self._launch(mid)
+   549→        elif cmd == "pause":
+   550→            if m["status"] in ("running", "planning"):
+   551→                m["pause_flag"] = True
+   552→                self._alog(m, "⏸ درخواست توقف ثبت شد — بین گام‌ها متوقف می‌شود", "warn")
+   553→        elif cmd == "resume":
+   554→            if m["status"] == "paused":
+   555→                m["status"] = "running"
+   556→                self._alog(m, "▶ ادامهٔ اجرا", "ok")
+   557→                self._launch(mid)
+   558→            else:
+   559→                raise AgentError("این ماموریت قابل ادامه نیست")
+   560→        elif cmd == "cancel":
+   561→            m["status"] = "cancelled"
+   562→            task = self.runners.pop(mid, None)
+   563→            if task and not task.done():
+   564→                task.cancel()
+   565→            self._alog(m, "🛑 ماموریت لغو شد", "warn")
+   566→        else:
+   567→            raise AgentError("فرمان ناشناخته")
+   568→        await self._emit(m)
+   569→        return {"ok": True, "status": m["status"]}
+   570→
+   571→    def recover(self) -> None:
+   572→        """بعد از ری‌استارت سرور: ماموریت‌های ناتمام → paused تا کاربر ادامه دهد."""
+   573→        n = 0
+   574→        for m in self.store.load():
+   575→            if m.get("status") in ("planning", "running"):
+   576→                m["status"] = "paused"
+   577→                m["log"].append({"t": datetime.now().strftime("%H:%M:%S"), "level": "warn",
+   578→                                 "step": "", "msg": "سرور ری‌استارت شد — با دکمهٔ «ادامه» از همین‌جا ادامه دهید"})
+   579→                self.store.upsert(m)
+   580→                n += 1
+   581→        if n:
+   582→            try:
+   583→                self.ctx["log"](f"🧠 {n} ماموریت نیمه‌تمام پیدا شد — در حالت توقف", "warn")
+   584→            except Exception:
+   585→                pass
+   586→
+   587→    async def finalize(self, mid: str) -> None:
+   588→        """زمان گزارش رسیده است (زمان‌بند صدایش می‌کند)."""
+   589→        m = self.store.get(mid)
+   590→        if not m or m["status"] in ("completed", "failed", "cancelled"):
+   591→            return
+   592→        self._alog(m, "🔔 زمان گزارش ماموریت رسید — گزارش نهایی ساخته می‌شود")
+   593→        await self._compile_report(m)
+   594→        m["status"] = "completed"
+   595→        await self._emit(m)
+   596→
+   597→    # -------------------------------------------------- اجراکنندهٔ اصلی
+   598→    async def _runner(self, mid: str) -> None:
+   599→        try:
+   600→            while True:
+   601→                m = self.store.get(mid)
+   602→                if not m or m["status"] in ("completed", "failed", "cancelled", "paused", "waiting"):
+   603→                    return
+   604→                # ۱) اگر برنامه نیست → بساز
+   605→                if not m.get("plan"):
+   606→                    ok = await self._do_plan(m)
+   607→                    if not ok or m["status"] != "running":
+   608→                        return
+   609→                steps = m["plan"]["steps"]
+   610→                idx = m.get("step_index", 0)
+   611→                # ۲) تمام شد؟ → گزارش خودکار
+   612→                if idx >= len(steps):
+   613→                    if not m.get("report"):
+   614→                        await self._compile_report(m)
+   615→                    m["status"] = "completed"
+   616→                    await self._emit(m)
+   617→                    return
+   618→                step = steps[idx]
+   619→                # ۳) دروازهٔ تأیید
+   620→                if m["status"] == "wait_approval":
+   621→                    if not m.get("approve_ok"):
+   622→                        return
+   623→                    m["approve_ok"] = False
+   624→                    m["status"] = "running"
+   625→                # ۴) انتشار فوری در حالت غیر خودکار نیاز به تأیید دارد
+   626→                if step["action"] == "publish_now" and m["autonomy"] != "auto" and not m.get("publish_ok"):
+   627→                    m["publish_ok"] = False
+   628→                    m["status"] = "wait_approval"
+   629→                    self._alog(m, "⏳ انتشار فوری نیازمند تأیید شماست — دکمهٔ «تأیید» را بزنید", "warn", step["action"])
+   630→                    await self._emit(m)
+   631→                    return
+   632→                m["status"] = "running"
+   633→                self._alog(m, f"▶ گام {idx + 1} از {len(steps)}: {TOOL_NAMES.get(step['action'], step['action'])} — {step.get('reason') or ''}")
+   634→                await self._emit(m)
+   635→                try:
+   636→                    await self._exec_step(m, idx, step)
+   637→                    step["status"] = "done"
+   638→                except AgentError as e:
+   639→                    step["status"] = "failed"
+   640→                    step["error"] = str(e)
+   641→                    self._alog(m, f"⚠ این گام ناتمام ماند: {e} — به گام بعدی می‌رویم", "warn", step["action"])
+   642→                except asyncio.CancelledError:
+   643→                    raise
+   644→                except Exception as e:  # noqa
+   645→                    step["status"] = "failed"
+   646→                    step["error"] = str(e)
+   647→                    self._alog(m, f"⚠ خطای غیرمنتظره در گام: {e} — ادامه می‌دهیم", "warn", step["action"])
+   648→                m["publish_ok"] = False
+   649→                m["step_index"] = idx + 1
+   650→                await self._emit(m)
+   651→        except asyncio.CancelledError:
+   652→            pass
+   653→        except Exception as e:  # noqa
+   654→            try:
+   655→                m = self.store.get(mid)
+   656→                if m:
+   657→                    m["status"] = "failed"
+   658→                    self._alog(m, f"❌ ماموریت متوقف شد: {e}", "error")
+   659→                    await self._emit(m)
+   660→            except Exception:
+   661→                pass
+   662→
+   663→    # -------------------------------------------------- برنامه‌ریزی
+   664→    async def _do_plan(self, m: Dict[str, Any]) -> bool:
+   665→        ai = self._ai_cfg()
+   666→        self._alog(m, "🧠 در حال فهمیدن ماموریت و ساخت برنامهٔ اجرایی…")
+   667→        await self._emit(m)
+   668→        active = self._active_platforms()
+   669→        budgets = ai.get("budgets", {})
+   670→        max_posts = int(budgets.get("posts_per_day", 4) or 4)
+   671→        rules = "\n".join(
+   672→            f"  - {pid} ({PLATFORM_INFO[pid]['name']}): حداکثر {PLATFORM_INFO[pid]['max_chars']} نویسه، "
+   673→            f"{PLATFORM_INFO[pid]['hashtags']} هشتگ، سبک: {PLATFORM_INFO[pid]['style']}"
+   674→            + (" — برای انتشار به عکس نیاز دارد (کتابخانهٔ رسانه)" if PLATFORM_INFO[pid]["needs_media"] else "")
+   675→            + (" — انتشار فقط به کانال (نام کانال لازم دارد)" if PLATFORM_INFO[pid]["is_messenger"] else "")
+   676→            for pid in active if pid in PLATFORM_INFO)
+   677→        caps = "، ".join(f"{pid} ≤ {c['cap']}" for pid, c in FOLLOW_CAPS.items() if pid in active)
+   678→        weekday = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنجشنبه", "جمعه", "شنبه", "یکشنبه"][datetime.now().weekday()]
+   679→        system = f"""تو «مغزِ» ParsAgent هستی؛ ایجنت خودمختار شبکه‌های اجتماعی. ماموریت کاربر را به یک برنامهٔ اجرایی دقیق و واقع‌گرایانه تبدیل کن.
+   680→
+   681→امروز: {datetime.now().strftime('%Y-%m-%d')} ({weekday}) — ساعت محلی: {datetime.now().strftime('%H:%M')}
+   682→پلتفرم‌های فعال کاربر: {', '.join(active) or 'هیچ‌کدام'}
+   683→
+   684→ابزارهای موجود — فقط همین‌ها، نه بیشتر:
+   685→1) generate_content — تولید متن پست. params: {{"ideas": ["..."], "posts_per_idea": N, "platforms": ["instagram","twitter",...], "tone": "لحن", "note": "نکتهٔ اختیاری"}}
+   686→2) generate_image — با AI عکس می‌سازد (برای پست‌های عکس‌دار — اینستاگرام/فیسبوک/استوری). params: {{"prompts": ["توضیح عکس..."], "count": N, "purpose": "برای کدام پست/ایده"}}
+   687→3) generate_video — چاپخانهٔ ویدیو (سبک MoneyPrinterTurbo): موضوع را می‌دهد، فیلم کامل با گوینده و زیرنویس می‌سازد. params: {{"topic": "...", "seconds": 45, "voice": "fa-IR-FaridNeural", "aspect": "9:16", "note": "..."}}
+   688→4) dm_autoreply — پاسخ‌گوی خودکار دایرکت‌ها را روشن/تنظیم می‌کند. params: {{"platforms": ["instagram",...], "persona": "معرفی شما", "tone": "لحن", "faq": [{{"q":"...","a":"..."}}]}}
+   689→5) schedule_publish — پست‌های تولیدشده را زمان‌بندی و در صف انتشار می‌گذارد. params: {{"strategy": "spread_week" یا "best_times" یا "same_time", "per_day": N, "channels": {{"telegram": "نام کانال", "bale": "..."}}}}
+   690→6) publish_now — بلافاصله منتشر می‌کند (فقط وقتی کاربر صریحاً «همین حالا/فوری» گفته). params: {{"post_ids": []}}
+   691→7) follow_strategy — تصمیم فالو برای رشد: چند نفر در روز، از کجا (هشتگ) و در چه ساعاتی. params: {{"platform": "...", "daily_follows": N, "source": "hashtag:عکاسی یا user1,user2", "active_hours": [10, 14, 21]}}
+   692→8) wait_report — گزارش نهایی را به زمان مقرر موکول می‌کند (وقتی کاربر گفت «آخر هفته گزارش بده»). params: {{"at": "YYYY-MM-DDTHH:MM"}}
+   693→9) report — همین حالا گزارش نهایی می‌سازد. params: {{"include": ["posts","schedules","follows","media","dm"]}}
+   694→10) status_check — وضعیت پلتفرم‌ها را بررسی می‌کند. params: {{}}
+   695→
+   696→نکته‌های مهم:
+   697→- اگر ماموریت «ویدیو» یا «ریلز» خواست، از generate_video استفاده کن و بعد خروجی‌اش را برای زمان‌بندی بگذار
+   698→- اگر برای پست اینستاگرام/فیسبوک عکس لازم است، به‌جای رهاکردن پست، گام generate_image بگذار
+   699→- اگر کاربر گفت «دایرکت‌ها را جواب بده»، dm_autoreply را با persona او تنظیم کن
+   700→
+   701→قوانین پلتفرم‌ها (برای generate_content):
+   702→{rules}
+   703→
+   704→محدودیت‌های امنی (نقض ممنوع):
+   705→- سقف پست روزانه: {max_posts} پست در روز
+   706→- سقف فالو روزانه: {caps or '—'}
+   707→- اینستاگرام و فیسبوک برای پستِ فید عکس لازم دارند؛ اگر کاربر رسانه نداده، برایشان محتوا تولید کن (پنل موقع زمان‌بندی هشدار می‌دهد)
+   708→- برای تلگرام/بله/روبیکا حتماً channels را پر کن؛ اگر کاربر کانالی نگفته، آن پلتفرم را از پست‌ها حذف کن
+   709→- گام آخر باید report یا wait_report باشد
+   710→
+   711→خروجی: فقط یک JSON معتبر — بدون هیچ متن دیگر:
+   712→{{"title": "عنوان کوتاه ماموریت", "analysis": "۲ تا ۳ جمله تحلیل و استراتژی کلی", "steps": [{{"action": "...", "params": {{...}}, "reason": "دلیل کوتاه"}}]}}
+   713→حداکثر ۸ گام. منطقی و قابل اجرا؛ اعداد را محافظه‌کارانه انتخاب کن."""
+   714→        try:
+   715→            data = await llm_json(ai, m["provider"], m["model"], [
+   716→                {"role": "system", "content": system},
+   717→                {"role": "user", "content": "ماموریت من:\n" + m["instruction"]},
+   718→            ], temperature=0.3)
+   719→        except AgentError as e:
+   720→            m["status"] = "failed"
+   721→            self._alog(m, f"❌ ساخت برنامه ناموفق: {e}", "error")
+   722→            await self._emit(m)
+   723→            return False
+   724→        steps = []
+   725→        for s in (data.get("steps") or [])[:8]:
+   726→            act = str(s.get("action") or "").strip()
+   727→            if act in TOOL_NAMES and act != "status_check" or act == "status_check":
+   728→                steps.append({"action": act, "params": s.get("params") or {},
+   729→                              "reason": str(s.get("reason") or "")[:200], "status": "pending"})
+   730→        if not steps:
+   731→            steps = [{"action": "report", "params": {"include": ["posts", "schedules", "follows"]},
+   732→                      "reason": "برنامهٔ معتبری ساخته نشد؛ فقط گزارش", "status": "pending"}]
+   733→        m["title"] = str(data.get("title") or "ماموریت " + m["id"][1:6])[:80]
+   734→        m["plan"] = {"title": m["title"], "analysis": str(data.get("analysis") or "")[:600], "steps": steps}
+   735→        self._alog(m, f"📋 برنامه آماده شد: {len(steps)} گام — {m['title']}", "ok")
+   736→        if m["autonomy"] == "manual":
+   737→            m["status"] = "wait_approval"
+   738→            self._alog(m, "⏸ سطح «پیشنهادی» فعال است — برنامه را ببینید و «تأیید و اجرا» را بزنید", "warn")
+   739→            await self._emit(m)
+   740→            return False
+   741→        m["status"] = "running"
+   742→        await self._emit(m)
+   743→        return True
+   744→
+   745→    # -------------------------------------------------- اجرای گام‌ها
+   746→    async def _exec_step(self, m: Dict[str, Any], idx: int, step: Dict[str, Any]) -> None:
+   747→        act, p = step["action"], step.get("params") or {}
+   748→        fn = getattr(self, "_tool_" + act, None)
+   749→        if not fn:
+   750→            raise AgentError(f"گام ناشناخته: {act}")
+   751→        await fn(m, p)
+   752→
+   753→    # —— ۱) تولید محتوا
+   754→    async def _tool_generate_content(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+   755→        ai = self._ai_cfg()
+   756→        active = set(self._active_platforms())
+   757→        ideas = [str(i).strip() for i in (p.get("ideas") or []) if str(i).strip()]
+   758→        if not ideas:
+   759→            ideas = [m["instruction"][:200]]
+   760→        per_idea = max(1, min(5, int(p.get("posts_per_idea") or 1)))
+   761→        platforms = [x for x in (p.get("platforms") or []) if x in PLATFORM_INFO and x in active]
+   762→        if not platforms:
+   763→            platforms = [x for x in PLATFORM_INFO if x in active and not PLATFORM_INFO[x]["needs_media"]]
+   764→        cap_total = int(ai.get("budgets", {}).get("posts_per_mission", 40) or 40)
+   765→        rules = "\n".join(f"- {pid} ({PLATFORM_INFO[pid]['name']}): حداکثر {PLATFORM_INFO[pid]['max_chars']} نویسه · "
+   766→                          f"{PLATFORM_INFO[pid]['hashtags']} هشتگ (ته‌متن، بعد از یک خط خالی) · سبک: {PLATFORM_INFO[pid]['style']}"
+   767→                          for pid in platforms)
+   768→        tone = p.get("tone") or "دوستانه و حرفه‌ای فارسی"
+   769→        note = p.get("note") or ""
+   770→        n_posts = 0
+   771→        for idea in ideas:
+   772→            if len(m["posts"]) >= cap_total:
+   773→                self._alog(m, f"⏹ سقف {cap_total} پست برای هر ماموریت پر شد — بقیهٔ ایده‌ها رد شد", "warn", "generate_content")
+   774→                break
+   775→            self._alog(m, f"✍️ تولید محتوا برای ایده: «{idea[:60]}»")
+   776→            await self._emit(m)
+   777→            data = await llm_json(ai, m["provider"], m["model"], [
+   778→                {"role": "system", "content":
+   779→                 f"تو نویسندهٔ حرفه‌ای شبکه‌های اجتماعی فارسی‌زبان هستی. برای این ایده، برای هر پلتفرمِ خواسته‌شده دقیقاً یک پست بنویس.\n\n"
+   780→                 f"قوانین پلتفرم‌ها:\n{rules}\n\nلحن: {tone}\n{('نکتهٔ کاربر: ' + note) if note else ''}\n\n"
+   781→                 "متن‌ها کاملاً فارسی و اصیل باشند؛ کلیشه ننویس. best_time = ساعت پیشنهادی انتشار برای مخاطب ایرانی (HH:MM).\n"
+   782→                 "برای هر پست یک image_prompt هم بنویس: توضیح انگلیسیِ کوتاه عکسِ پیشنهادی همان پست (برای تصویرسازی با AI).\n"
+   783→                 'خروجی فقط JSON: {"posts": [{"platform": "instagram", "text": "...", "hashtags": "#a #b", "best_time": "18:30", "image_prompt": "cinematic photo of ..."}]}'},
+   784→                {"role": "user", "content": f"ایده: {idea}\nپلتفرم‌ها: {', '.join(platforms)}"},
+   785→            ], temperature=0.8)
+   786→            got = 0
+   787→            for raw in (data.get("posts") or [])[:per_idea * len(platforms)]:
+   788→                pid = raw.get("platform")
+   789→                if pid not in platforms or len(m["posts"]) >= cap_total:
+   790→                    continue
+   791→                info = PLATFORM_INFO[pid]
+   792→                text = str(raw.get("text") or "").strip()[:info["max_chars"]]
+   793→                if not text:
+   794→                    continue
+   795→                m["posts"].append({
+   796→                    "id": f"p{len(m['posts']) + 1}", "idea": idea[:120], "platform": pid,
+   797→                    "text": text, "hashtags": str(raw.get("hashtags") or "").strip()[:200],
+   798→                    "best_time": str(raw.get("best_time") or "")[:5], "status": "draft",
+   799→                    "image_prompt": str(raw.get("image_prompt") or "").strip()[:400],
+   800→                    "media": "",
+   801→                })
+   802→                got += 1
+   803→            n_posts += got
+   804→            self._alog(m, f"✅ {got} پست برای «{idea[:40]}» تولید شد (مجموع: {len(m['posts'])})", "ok", "generate_content")
+   805→            await self._emit(m)
+   806→        if not m["posts"]:
+   807→            raise AgentError("هیچ پستی تولید نشد — ایده یا پلتفرم‌ها را واضح‌تر بنویسید")
+   808→
+   809→    # —— ۱.۵) ساخت عکس با AI (۲.۴.۰)
+   810→    async def _tool_generate_image(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+   811→        if not callable(self.ctx.get("generate_media_images")):
+   812→            raise AgentError("ماژول چاپخانهٔ رسانه آماده نیست (ai_media.py)")
+   813→        prompts = [str(x).strip() for x in (p.get("prompts") or []) if str(x).strip()]
+   814→        purpose = (p.get("purpose") or "").strip()
+   815→        if not prompts:
+   816→            raise AgentError("برای ساخت عکس، توضیح عکس (پرامپت) لازم است")
+   817→        count = max(1, min(6, int(p.get("count") or len(prompts))))
+   818→        prompts = (prompts * count)[:count]
+   819→        self._alog(m, f"🎨 ساخت {count} عکس با AI…" + (f" — {purpose[:80]}" if purpose else ""), "", "generate_image")
+   820→        await self._emit(m)
+   821→        res = await self.ctx["generate_media_images"](prompts, count, "square", m.get("id"))
+   822→        files = (res or {}).get("files") or []
+   823→        m.setdefault("media", []).extend(files)
+   824→        self._alog(m, f"✅ {len(files)} عکس ساخته و در «رسانه‌ها» ذخیره شد — از همان‌جا قابل انتشار است", "ok", "generate_image")
+   825→
+   826→    # —— ۱.۶) چاپخانهٔ ویدیو (۲.۴.۰ — سبک MoneyPrinterTurbo)
+   827→    async def _tool_generate_video(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+   828→        if not callable(self.ctx.get("generate_media_video")):
+   829→            raise AgentError("ماژول چاپخانهٔ رسانه آماده نیست (ai_media.py)")
+   830→        topic = (p.get("topic") or "").strip()
+   831→        if not topic:
+   832→            raise AgentError("موضوع ویدیو لازم است")
+   833→        seconds = max(15, min(180, int(p.get("seconds") or 45)))
+   834→        voice = str(p.get("voice") or "fa-IR-FaridNeural")
+   835→        aspect = str(p.get("aspect") or "9:16")
+   836→        note = (p.get("note") or "").strip()
+   837→        self._alog(m, f"🎬 چاپخانهٔ ویدیو روشن شد — «{topic[:60]}» ({seconds} ثانیه، {aspect})" +
+   838→                     (f" — نکته: {note[:80]}" if note else ""), "", "generate_video")
+   839→        await self._emit(m)
+   840→        res = await self.ctx["generate_media_video"](
+   841→            topic=topic + (f" — نکته: {note}" if note else ""), seconds=seconds, voice=voice, aspect=aspect)
+   842→        if not (res or {}).get("file"):
+   843→            raise AgentError("ساخت ویدیو ناموفق بود — جزئیات در لاگ")
+   844→        m.setdefault("media", []).append(res["file"])
+   845→        self._alog(m, f"✅ ویدیو آماده است: {res['file']} — در «رسانه‌ها» برای انتشار", "ok", "generate_video")
+   846→
+   847→    # —— ۱.۷) پاسخ‌گوی دایرکت (۲.۴.۰)
+   848→    async def _tool_dm_autoreply(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+   849→        if not callable(self.ctx.get("dm_configure")):
+   850→            raise AgentError("ماژول پاسخ‌گوی دایرکت آماده نیست (dm_reply.py)")
+   851→        active = set(self._active_platforms())
+   852→        platforms = [x for x in (p.get("platforms") or []) if x in active] or \
+   853→            [x for x in active if x in ("instagram", "telegram", "bale", "rubika", "twitter", "whatsapp")][:2]
+   854→        await self.ctx["dm_configure"]({
+   855→            "enabled": True, "platforms": {pid: (pid in platforms) for pid in active},
+   856→            "persona": str(p.get("persona") or "").strip(),
+   857→            "tone": str(p.get("tone") or "صمیمی و محترمانه — فارسی روان").strip(),
+   858→            "faq": p.get("faq") or [],
+   859→        })
+   860→        self._alog(m, f"💬 پاسخ‌گوی دایرکت برای {len(platforms)} پلتفرم فعال شد — جواب‌ها با شخصیت و لحن شما", "ok", "dm_autoreply")
+   861→
+   862→    # —— ۲) زمان‌بندی انتشار
+   863→    async def _tool_schedule_publish(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+   864→        ai = self._ai_cfg()
+   865→        strategy = p.get("strategy") or "spread_week"
+   866→        per_day = max(1, min(6, int(p.get("per_day") or ai.get("budgets", {}).get("posts_per_day", 3) or 3)))
+   867→        channels = p.get("channels") or {}
+   868→        images = list(self.ctx["media_images"]())
+   869→        posts = [x for x in m["posts"] if x.get("status") == "draft"]
+   870→        if not posts:
+   871→            self._alog(m, "پست آماده‌ای برای زمان‌بندی نیست (اول generate_content)", "warn", "schedule_publish")
+   872→            return
+   873→        # پخش زمان‌ها: از امروز، حداکثر per_day پست در روز، در ساعات پیشنهادی
+   874→        times: List[datetime] = []
+   875→        now = datetime.now()
+   876→        day_offset = 0
+   877→        hour_pool = list(DEFAULT_HOURS)
+   878→        for i in range(len(posts)):
+   879→            d = now + timedelta(days=day_offset)
+   880→            if strategy == "best_times":
+   881→                bt = (posts[i].get("best_time") or "").strip()
+   882→                try:
+   883→                    hh, mm = map(int, bt.split(":")[:2])
+   884→                except Exception:
+   885→                    hh, mm = hour_pool[i % len(hour_pool)], random.randint(2, 40)
+   886→            else:
+   887→                hh, mm = hour_pool[i % len(hour_pool)], random.randint(2, 40)
+   888→            if hh < 8 or hh >= 24:
+   889→                hh = 21
+   890→            when = d.replace(hour=hh, minute=mm, second=0, microsecond=0)
+   891→            if when <= now:
+   892→                when += timedelta(days=1)
+   893→            times.append(when)
+   894→            if (i + 1) % per_day == 0:
+   895→                day_offset += 1
+   896→        if strategy == "same_time":
+   897→            base_t = times[0]
+   898→            times = [base_t + timedelta(minutes=7 * i) for i in range(len(times))]
+   899→        n_ok, n_skip = 0, 0
+   900→        for post, when in zip(posts, times):
+   901→            pid = post["platform"]
+   902→            info = PLATFORM_INFO[pid]
+   903→            params: Dict[str, Any] = {"text": post["text"] + (
+   904→                "\n\n" + post["hashtags"] if post.get("hashtags") else "")}
+   905→            if info["is_messenger"]:
+   906→                target = (channels.get(pid) or "").strip()
+   907→                if not target:
+   908→                    n_skip += 1
+   909→                    post["status"] = "no_channel"
+   910→                    continue
+   911→                params["target"] = target
+   912→            elif info["needs_media"]:
+   913→                # ۲.۴.۰: اگر کتابخانه عکس ندارد، ایجنت خودش با AI عکس می‌سازد
+   914→                media = post.get("media") or ""
+   915→                if not media:
+   916→                    images = list(self.ctx["media_images"]())
+   917→                    media = images[0] if images else ""
+   918→                if media:
+   919→                    params["media"] = media
+   920→                elif callable(self.ctx.get("generate_media_images")):
+   921→                    try:
+   922→                        self._alog(m, f"🎨 عکس پست {post['id']} با AI ساخته می‌شود…", "", "generate_image")
+   923→                        await self._emit(m)
+   924→                        prompt = post.get("image_prompt") or (post["idea"] + " — high quality")
+   925→                        res = await self.ctx["generate_media_images"]([prompt], 1, "square", m.get("id"))
+   926→                        files = (res or {}).get("files") or []
+   927→                        if files:
+   928→                            params["media"] = files[0]
+   929→                            post["media"] = files[0]
+   930→                        else:
+   931→                            n_skip += 1
+   932→                            post["status"] = "needs_media"
+   933→                            continue
+   934→                    except Exception as e:  # noqa
+   935→                        self._alog(m, f"⚠ ساخت عکس ناموفق: {e}", "warn", "generate_image")
+   936→                        n_skip += 1
+   937→                        post["status"] = "needs_media"
+   938→                        continue
+   939→                else:
+   940→                    n_skip += 1
+   941→                    post["status"] = "needs_media"
+   942→                    continue
+   943→            entry = {
+   944→                "title": f"AI · پست {post['id']} — {info['name']}",
+   945→                "type": "action", "platform": pid, "action": info["post_action"],
+   946→                "params": params,
+   947→                "timing": {"type": "once", "at": when.isoformat(timespec="seconds")},
+   948→                "pacing": {}, "enabled": True, "mission_id": m["id"], "post_id": post["id"],
+   949→            }
+   950→            job = await self.ctx["add_schedule"](entry)
+   951→            post["status"] = "scheduled"
+   952→            m["scheduled"].append({"post_id": post["id"], "platform": pid,
+   953→                                   "at": when.isoformat(timespec="seconds"),
+   954→                                   "job_id": job.get("id"), "action": info["post_action"]})
+   955→            n_ok += 1
+   956→        msg = f"📅 {n_ok} پست در صف انتشار قرار گرفت" + (
+   957→            f" — {n_skip} مورد رد شد (عکس یا کانال ندارند؛ وضعیت‌شان در لیست پست‌ها مشخص است)" if n_skip else "")
+   958→        self._alog(m, msg, "ok" if n_ok else "warn", "schedule_publish")
+   959→        if n_skip:
+   960→            self._alog(m, "💡 برای پست‌های اینستاگرام/فیسبوک از تب «رسانه‌ها» عکس بگذارید؛ برای پیام‌رسان‌ها نام کانال را در ماموریت بگویید", "warn")
+   961→
+   962→    # —— ۳) انتشار فوری
+   963→    async def _tool_publish_now(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+   964→        ids = set(p.get("post_ids") or [])
+   965→        posts = [x for x in m["posts"] if (not ids or x["id"] in ids) and x.get("status") in ("draft", "no_channel")]
+   966→        targets = [x for x in posts if x["status"] == "draft"]
+   967→        if not targets:
+   968→            self._alog(m, "پست قابل انتشار فوری نیست", "warn", "publish_now")
+   969→            return
+   970→        images = list(self.ctx["media_images"]())
+   971→        for post in targets:
+   972→            info = PLATFORM_INFO[post["platform"]]
+   973→            params = {"text": post["text"] + ("\n\n" + post["hashtags"] if post.get("hashtags") else "")}
+   974→            if info["is_messenger"]:
+   975→                ch = ((p.get("channels") or {}).get(post["platform"]) or "").strip()
+   976→                if not ch:
+   977→                    self._alog(m, f"پست {post['id']} کانال ندارد — رد شد", "warn", "publish_now")
+   978→                    continue
+   979→                params["target"] = ch
+   980→            elif info["needs_media"]:
+   981→                media = post.get("media") or (images[0] if images else "")
+   982→                if not media and callable(self.ctx.get("generate_media_images")):
+   983→                    try:
+   984→                        prompt = post.get("image_prompt") or (post["idea"] + " — high quality")
+   985→                        res = await self.ctx["generate_media_images"]([prompt], 1, "square", m.get("id"))
+   986→                        media = ((res or {}).get("files") or [""])[0]
+   987→                    except Exception:
+   988→                        media = ""
+   989→                if not media:
+   990→                    self._alog(m, f"پست {post['id']} برای {info['name']} عکس لازم دارد — از تب رسانه‌ها اضافه کنید", "warn", "publish_now")
+   991→                    continue
+   992→                params["media"] = media
+   993→            self._alog(m, f"🚀 انتشار فوری پست {post['id']} در {info['name']} …")
+   994→            res = await self.ctx["run_action"](post["platform"], info["post_action"], params)
+   995→            m["published"].append({"post_id": post["id"], "platform": post["platform"],
+   996→                                   "ok": bool(res.get("ok")), "message": res.get("message", ""),
+   997→                                   "at": _now_iso()})
+   998→            post["status"] = "published" if res.get("ok") else "failed"
+   999→
+  1000→    # —— ۴) استراتژی فالو
+  1001→    async def _tool_follow_strategy(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+  1002→        pid = p.get("platform")
+  1003→        if pid not in FOLLOW_CAPS or pid not in PLATFORM_INFO:
+  1004→            raise AgentError(f"برای «{pid}» استراتژی فالو پشتیبانی نمی‌شود "
+  1005→                             f"(فقط: {', '.join(FOLLOW_CAPS)})")
+  1006→        cap = FOLLOW_CAPS[pid]
+  1007→        daily = max(1, min(cap["cap"], int(p.get("daily_follows") or 10)))
+  1008→        source = (p.get("source") or "").strip()
+  1009→        if not source:
+  1010→            raise AgentError("منبع فالو مشخص نیست — هشتگ یا لیست کاربران لازم است")
+  1011→        hours = [int(h) for h in (p.get("active_hours") or []) if 6 <= int(h) <= 23] or [10, 14, 21]
+  1012→        hours = sorted(set(hours))[:4]
+  1013→        per_run = max(1, daily // len(hours))
+  1014→        plan = {"daily_follows": daily, "per_run": per_run, "hours": hours,
+  1015→                "source": source, "created_at": _now_iso(), "mission_id": m["id"]}
+  1016→        # ثبت در تنظیمات برای نمایش در پنل
+  1017→        try:
+  1018→            st = self.ctx["get_settings"]()
+  1019→            st.setdefault("ai", {}).setdefault("follow_plans", {})[pid] = plan
+  1020→            self.ctx["save_settings"](st)
+  1021→        except Exception:
+  1022→            pass
+  1023→        # ساخت زمان‌بندی‌های روزانه
+  1024→        for h in hours:
+  1025→            entry = {
+  1026→                "title": f"AI · فالو {PLATFORM_INFO[pid]['name']} ساعت {h}",
+  1027→                "type": "action", "platform": pid, "action": cap["action"],
+  1028→                "params": {"target": source, "count": per_run},
+  1029→                "timing": {"type": "daily", "hours": [h], "minute": random.randint(2, 25)},
+  1030→                "pacing": {"delay_min": 45, "delay_max": 140},
+  1031→                "enabled": True, "mission_id": m["id"],
+  1032→            }
+  1033→            await self.ctx["add_schedule"](entry)
+  1034→        self._alog(m, f"🎯 استراتژی فالو ثبت شد: {daily} نفر در روز ({per_run} نفر در {len(hours)} نوبت ساعت‌های "
+  1035→                     f"{'، '.join(str(h) for h in hours)}) از «{source}» — سقف امن {cap['cap']}", "ok", "follow_strategy")
+  1036→
+  1037→    # —— ۵) گزارش زمان‌دار
+  1038→    async def _tool_wait_report(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+  1039→        at = (p.get("at") or "").strip()
+  1040→        try:
+  1041→            when = datetime.fromisoformat(at)
+  1042→        except Exception:
+  1043→            when = datetime.now() + timedelta(days=7)
+  1044→        if when <= datetime.now():
+  1045→            when = datetime.now() + timedelta(hours=1)
+  1046→        entry = {
+  1047→            "title": f"AI · گزارش نهایی «{m['title'][:30]}»",
+  1048→            "type": "ai_report", "platform": "instagram", "action": "ai_report",
+  1049→            "params": {}, "timing": {"type": "once", "at": when.isoformat(timespec="seconds")},
+  1050→            "pacing": {}, "enabled": True, "mission_id": m["id"],
+  1051→        }
+  1052→        await self.ctx["add_schedule"](entry)
+  1053→        m["status"] = "waiting"
+  1054→        self._alog(m, f"⏰ گزارش نهایی برای {when.strftime('%Y-%m-%d ساعت %H:%M')} زمان‌بندی شد — تا آن زمان کار خودتان را بکنید", "ok", "wait_report")
+  1055→
+  1056→    # —— ۶) گزارش فوری
+  1057→    async def _tool_report(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+  1058→        await self._compile_report(m)
+  1059→        m["status"] = "completed"
+  1060→
+  1061→    # —— ۷) بررسی وضعیت
+  1062→    async def _tool_status_check(self, m: Dict[str, Any], p: Dict[str, Any]) -> None:
+  1063→        active = self._active_platforms()
+  1064→        self._alog(m, f"🌐 پلتفرم‌های فعال: {', '.join(active) or '—'} | پست‌های تولیدشده: {len(m['posts'])} | "
+  1065→                     f"در صف انتشار: {len(m['scheduled'])}", "ok", "status_check")
+  1066→
+  1067→    # -------------------------------------------------- گزارش نهایی
+  1068→    async def _compile_report(self, m: Dict[str, Any]) -> None:
+  1069→        ai = self._ai_cfg()
+  1070→        by_platform: Dict[str, int] = {}
+  1071→        for post in m["posts"]:
+  1072→            by_platform[post["platform"]] = by_platform.get(post["platform"], 0) + 1
+  1073→        try:
+  1074→            follow_plans = (self.ctx["get_settings"]().get("ai", {}).get("follow_plans") or {})
+  1075→        except Exception:
+  1076→            follow_plans = {}
+  1077→        fp = {pid: v.get("daily_follows") for pid, v in follow_plans.items() if v.get("mission_id") == m["id"]}
+  1078→        stats = {
+  1079→            "ideas": len({post.get("idea") for post in m["posts"]}),
+  1080→            "posts_generated": len(m["posts"]),
+  1081→            "by_platform": by_platform,
+  1082→            "scheduled": len(m["scheduled"]),
+  1083→            "published_now": len([x for x in m["published"] if x.get("ok")]),
+  1084→            "follow_plans": fp,
+  1085→        }
+  1086→        m["report"] = {"stats": stats, "summary": "", "created_at": _now_iso()}
+  1087→        self._alog(m, "📝 در حال نوشتن گزارش مدیریتی…")
+  1088→        await self._emit(m)
+  1089→        try:
+  1090→            text = await llm_chat(ai, m["provider"], m["model"], [
+  1091→                {"role": "system", "content":
+  1092→                 "تو گزارشگر مدیریتی ParsAgent هستی. با توجه به این آمار، یک گزارش کوتاه و کاربردی فارسی بنویس: "
+  1093→                 "۴ تا ۶ بولت با اعداد، یک جمله دربارهٔ «گام بعدی پیشنهادی»، و یک جملهٔ جمع‌بندی. "
+  1094→                 "از چرتکه و توضیح فنی بپرهیز؛ کارفرما وقت ندارد. فقط متن گزارش — بدون عنوان اضافه."},
+  1095→                {"role": "user", "content":
+  1096→                 f"ماموریت: {m['title']}\nدستور اولیه: {m['instruction'][:400]}\nآمار به JSON: {json.dumps(stats, ensure_ascii=False)}"},
+  1097→            ], temperature=0.5, max_tokens=700)
+  1098→            m["report"]["summary"] = text.strip()[:2500] or "گزارش ساخته شد (بدون متن خلاصه)"
+  1099→        except AgentError as e:
+  1100→            m["report"]["summary"] = f"گزارش آماری ساخته شد؛ خلاصه‌نویسی ناموفق بود ({e})"
+  1101→        self._alog(m, "✅ گزارش نهایی آماده است — تب هوش مصنوعی ← کارت ماموریت", "ok", "report")
+  1102→        await self._emit(m)
+  1103→
+  1104→    # -------------------------------------------------- خلاصه برای پنل
+  1105→    def summarize(self, m: Dict[str, Any]) -> Dict[str, Any]:
+  1106→        return {
+  1107→            "id": m["id"], "title": m["title"], "instruction": m["instruction"][:300],
+  1108→            "provider": m["provider"], "model": m["model"], "autonomy": m["autonomy"],
+  1109→            "status": m["status"], "created_at": m["created_at"], "updated_at": m.get("updated_at"),
+  1110→            "plan": m.get("plan"), "step_index": m.get("step_index", 0),
+  1111→            "counts": {"posts": len(m.get("posts") or []), "scheduled": len(m.get("scheduled") or []),
+  1112→                       "published": len(m.get("published") or [])},
+  1113→            "report": m.get("report"),
+  1114→            "log": (m.get("log") or [])[-25:],
+  1115→            "media": (m.get("media") or [])[:12],
+  1116→            "posts": [{"id": x["id"], "platform": x["platform"], "idea": x.get("idea", ""),
+  1117→                       "text": x["text"][:280], "status": x.get("status", "draft"),
+  1118→                       "media": x.get("media", "")} for x in (m.get("posts") or [])[:60]],
+  1119→        }
+  1120→
+  1121→    def list_missions(self) -> List[Dict[str, Any]]:
+  1122→        return [self.summarize(m) for m in self.store.load()]
+  1123→

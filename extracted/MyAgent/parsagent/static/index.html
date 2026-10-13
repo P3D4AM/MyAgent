@@ -1,0 +1,2208 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ParsAgent — پنل مدیریت</title>
+<style>
+:root{
+  --bg:#0f1420;--card:#171e2e;--card2:#1c2438;--border:#27314b;--text:#e8ecf5;--muted:#93a0b8;
+  --accent:#10b981;--accent-soft:rgba(16,185,129,.12);--accent-b:rgba(16,185,129,.35);
+  --amber:#f59e0b;--danger:#ef4444;--ok:#22c55e;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;
+  font-family:Vazirmatn,'Segoe UI',Tahoma,Arial,sans-serif;font-size:14px}
+header{position:sticky;top:0;z-index:50;background:rgba(15,20,32,.94);backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:10px 18px;flex-wrap:wrap}
+.brand{font-size:17px;font-weight:800;white-space:nowrap}
+.brand span{color:var(--accent)}
+nav.tabs{display:flex;gap:2px;flex-wrap:wrap}
+nav.tabs button{background:transparent;border:0;color:var(--muted);padding:8px 13px;border-radius:10px;
+  cursor:pointer;font-family:inherit;font-size:13.5px;transition:.15s}
+nav.tabs button:hover{color:var(--text)}
+nav.tabs button.active{background:var(--card2);color:var(--text)}
+.badge{margin-inline-start:auto;background:var(--accent-soft);color:#34d399;border:1px solid var(--accent-b);
+  padding:6px 12px;border-radius:999px;font-size:12px;white-space:normal;max-width:min(100%,430px);text-align:center}
+main{flex:1;width:100%;max-width:1180px;margin:0 auto;padding:20px 16px 44px}
+footer{margin-top:auto;border-top:1px solid var(--border);padding:14px 18px;text-align:center;
+  color:var(--muted);font-size:12.5px;background:var(--card)}
+.tab{display:none}.tab.active{display:block}
+h2{font-size:20px;margin:4px 0 16px}
+h3{font-size:15.5px;margin:0 0 12px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px}
+.grid{display:grid;gap:14px}
+.grid.c2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.grid.c3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+.grid.c4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+label.f{display:block;margin-bottom:10px;font-size:13px;color:var(--muted)}
+label.f>b{display:block;margin-bottom:6px;color:var(--text);font-weight:600;font-size:13.5px}
+input[type=text],input[type=number],input[type=password],input[type=datetime-local],select,textarea{
+  width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;
+  padding:9px 12px;font-family:inherit;font-size:13.5px;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent-b)}
+textarea{resize:vertical;min-height:70px}
+.btn{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:9px 16px;border-radius:10px;
+  cursor:pointer;font-family:inherit;font-size:13.5px;transition:.15s}
+.btn:hover{border-color:var(--accent-b)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#04281c;font-weight:700}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.danger{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.4);color:#f87171}
+.btn.warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.4);color:#fbbf24}
+.btn.sm{padding:5px 10px;font-size:12.5px;border-radius:8px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 10px;border-radius:999px;
+  border:1px solid var(--border);color:var(--muted)}
+.chip.on{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.4);color:#4ade80}
+.chip.off{background:rgba(148,163,184,.08)}
+.chip.rec{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.5);color:#f87171}
+.muted{color:var(--muted)}.small{font-size:12.5px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.switch{position:relative;display:inline-block;width:42px;height:23px;flex:none}
+.switch input{opacity:0;width:0;height:0}
+.slider{position:absolute;inset:0;background:var(--card2);border:1px solid var(--border);border-radius:999px;
+  transition:.2s;cursor:pointer}
+.slider:before{content:"";position:absolute;height:15px;width:15px;right:3px;top:3px;background:var(--muted);
+  border-radius:50%;transition:.2s}
+.switch input:checked + .slider{background:var(--accent-soft);border-color:var(--accent-b)}
+.switch input:checked + .slider:before{background:var(--accent);transform:translateX(-18px)}
+.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 2px;
+  border-bottom:1px dashed var(--border)}
+.setrow:last-child{border-bottom:0}
+.setrow .lbl{font-size:13.5px}
+.hint{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;
+  border:1px solid var(--border);color:var(--muted);font-size:10px;cursor:help;position:relative;
+  margin-inline-start:6px;flex:none}
+.hint:hover::after{content:attr(data-tip);position:absolute;bottom:135%;right:50%;transform:translateX(50%);
+  background:#0a0e17;border:1px solid var(--border);color:var(--text);padding:9px 11px;border-radius:9px;
+  width:270px;font-size:12px;line-height:1.8;z-index:70;white-space:normal;text-align:right;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+/* ۲.۱۰.۰ — دکمه و جعبهٔ راهنمای کلیدهای API (آموزش + لینک اخذ) */
+.keyhint{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;
+  border:1px solid var(--accent-b);background:var(--accent-soft);color:var(--accent);font-size:10px;font-weight:700;
+  cursor:pointer;margin-inline-start:6px;flex:none;padding:0;font-family:inherit;vertical-align:middle}
+.keyhint:hover{filter:brightness(1.25)}
+.keybox{background:var(--card2);border:1px solid var(--accent-b);border-radius:10px;padding:10px 12px;margin:7px 0 2px;
+  font-size:12px;color:var(--muted);line-height:2;grid-column:1 / -1}
+.keybox .ttl{color:var(--text);font-weight:700;font-size:12.5px;margin-bottom:2px}
+.keybox ol{margin:2px 16px 4px 0;padding:0}
+.keybox ol li{margin-bottom:2px}
+.keybox .lnk{margin-top:4px}
+.keybox a{color:var(--accent);font-weight:700;text-decoration:none;border-bottom:1px dashed var(--accent-b)}
+.keybox a:hover{border-bottom-style:solid}
+.keybox .note{margin-top:3px;font-size:11.5px}
+.keybox .note.warn{color:#fbbf24}
+#logfeed{background:#0a0e17;border:1px solid var(--border);border-radius:10px;padding:10px;height:300px;
+  overflow-y:auto;font-size:12px;line-height:1.9;font-family:Consolas,monospace;direction:ltr;text-align:left}
+#logfeed .t{color:#56637d;margin-right:6px}
+#logfeed .warn{color:#fbbf24}#logfeed .error{color:#f87171}
+.logwrap::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:8px}
+.logwrap::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--border)}
+th{color:var(--muted);font-weight:600;font-size:12.5px}
+.plat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;
+  display:flex;flex-direction:column;gap:10px}
+.plat-card .ic{font-size:26px}
+.plat-card .nm{font-weight:700;font-size:15px}
+.hours{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;direction:ltr}
+.hours label{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);
+  cursor:pointer;border:1px solid var(--border);border-radius:8px;padding:4px 2px;transition:.15s}
+.hours label:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.hours input{display:none}
+.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+.media-item{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:8px;text-align:center}
+.media-item img{width:100%;height:80px;object-fit:cover;border-radius:8px;background:#0a0e17}
+.media-item .fn{font-size:10.5px;color:var(--muted);margin:6px 0;word-break:break-all;direction:ltr;max-height:26px;overflow:hidden}
+.dropzone{border:2px dashed var(--border);border-radius:12px;padding:26px;text-align:center;color:var(--muted);
+  cursor:pointer;transition:.2s}
+.dropzone:hover,.dropzone.drag{border-color:var(--accent);color:var(--accent)}
+details{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:10px}
+details summary{cursor:pointer;font-weight:700;font-size:14px}
+details p{color:var(--muted);font-size:13px;line-height:2.1}
+details li{color:var(--muted);font-size:13px;line-height:2.1;margin-bottom:4px}
+.test-res{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--border);
+  border-radius:10px;margin-bottom:8px;font-size:13px;align-items:center}
+.test-res .ok{color:#4ade80}.test-res .bad{color:#f87171}
+.hidden{display:none !important}
+#toast{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--card2);border:1px solid var(--accent-b);color:var(--text);padding:11px 18px;
+  border-radius:11px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:tin .25s}
+.toast.err{border-color:rgba(239,68,68,.5)}
+@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center}
+.stat .v{font-size:26px;font-weight:800;color:var(--accent)}
+.stat .k{font-size:12.5px;color:var(--muted);margin-top:4px}
+.divider{height:1px;background:var(--border);margin:14px 0}
+.stgroup{margin:16px 0 4px;padding:7px 13px;background:var(--accent-soft);border:1px solid var(--accent-b);
+  border-radius:9px;font-size:13px;font-weight:700;color:#34d399}
+.warnlbl{color:#fbbf24!important}
+kbd{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:1px 7px;font-size:11.5px}
+/* ۲.۱۱.۰ — کادر «چه چیز تازه است؟» (پاسخ به گزارش «۲.۱۰ همون ۲.۹ بود») */
+.whatsnew{background:linear-gradient(135deg,rgba(52,211,153,.13),rgba(16,185,129,.05));
+  border:1px solid rgba(52,211,153,.45);border-radius:14px;padding:13px 18px;margin-bottom:18px}
+.whatsnew summary{cursor:pointer;font-size:14.5px;font-weight:800;color:#34d399;user-select:none;list-style:none}
+.whatsnew summary::-webkit-details-marker{display:none}
+.whatsnew summary::before{content:"▾ ";font-size:12px}
+.whatsnew[open] summary::before{content:"▴ "}
+.whatsnew .wn-note{font-size:11.5px;color:var(--muted);font-weight:400}
+.whatsnew .wn-body{margin-top:10px;font-size:13px;line-height:2.05}
+.whatsnew .wn-body b{color:var(--accent)}
+.whatsnew ul{margin:6px 0 10px;padding-inline-start:20px}
+.whatsnew li{margin-bottom:4px}
+@media (max-width:760px){.hours{grid-template-columns:repeat(6,1fr)}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">🤖 Pars<span>Agent</span></div>
+  <nav class="tabs" id="tabs">
+    <button data-tab="dashboard" class="active">داشبورد</button>
+    <button data-tab="platforms">پلتفرم‌ها</button>
+    <button data-tab="quick">اجرای سریع</button>
+    <button data-tab="sched">زمان‌بندی</button>
+    <button data-tab="media">رسانه‌ها</button>
+    <button data-tab="macro">ضبط ماکرو</button>
+    <button data-tab="ai">🧠 هوش مصنوعی</button>
+    <button data-tab="settings">تنظیمات</button>
+    <button data-tab="help">راهنما</button>
+  </nav>
+  <div class="badge">🔒 سرور محلی · هوش مصنوعی فقط با سرویس انتخابی شما حرف می‌زند</div>
+</header>
+
+<main>
+
+<!-- ============ 🎉 چه چیز تازه است؟ (۲.۱۵.۰) — تغییرات هر نسخه از اینجا دیده می‌شود ============ -->
+<details class="whatsnew" open id="whatsnew">
+  <summary>🎉 چه چیز تازه است؟ — نسخهٔ ۲.۱۵.۰ <span class="wn-note">(این کادر با هر نسخهٔ جدید به‌روز می‌شود — اینجا می‌بینید دقیقاً چه عوض شده)</span></summary>
+  <div class="wn-body">
+    <b>جدید در ۲.۱۵.۰ — کنترل کامل پخش ماکرو (هر چهار درخواست شما):</b>
+    <ul>
+      <li>⏹ <b>دکمهٔ «توقف پخش»</b> — تا حالا بعد از زدن «▶ اجرا» راه برگشتی نبود؛ حالا همان‌جا در تب ضبط ماکرو، دکمهٔ توقف پخش ظاهر می‌شود (همراه چیپ «در حال پخش …») و پخش همان‌جا قطع می‌شود.</li>
+      <li>🎯 <b>دراپ‌داون پخش حذف شد — پلتفرم از خودِ ضبط می‌آید</b> — هر ماکرو موقع ذخیره، پلتفرمِ لحظهٔ ضبط را یادش می‌ماند و در ردیف خودش نشانش می‌دهد؛ دیگر انتخاب نمی‌خواهد (قبلاً انتخاب پلتفرمِ دیگر، وسطِ به‌روزرسانی ۳ ثانیه‌ای صفحه، به گزینهٔ اول — اینستاگرام — برمی‌گشت!). فقط ماکروهای خیلی قدیمی که پلتفرم ندارند، دراپ‌داونِ همان ردیف را دارند.</li>
+      <li>🌐 <b>شروع پخش = باز شدن صفحهٔ اصلی همان پلتفرم</b> — قبلاً مرورگر با صفحهٔ خالی باز می‌ماند و سایت اصلاً نمی‌آمد؛ حالا اول به صفحهٔ اصلی همان شبکه می‌رود بعد ماکرو اجرا می‌شود.</li>
+      <li>🔒 <b>پایان یا توقف پخش = بسته شدن خودکار پنجرهٔ مرورگرِ همان پلتفرم</b> — و اگر خودتان هم مرورگر را دستی بسته باشید، دفعهٔ بعد دیگر خطا نمی‌دهد؛ خودش دوباره باز می‌کند (قبلاً تا ری‌استارتِ پنل هیچ ماکرویی دوباره پخش نمی‌شد).</li>
+    </ul>
+    <b>۲.۱۴.۰:</b> رفع خطای 404 مدل‌ها (کاتالوگ زنده + جایگزینی خودکار + دکمهٔ «مدل‌های زنده») + تعمیر کامل ضبط/پخش (تایپ چت‌ها، ضبط فقط در همان شبکه، پخش مقاوم).
+    <br><b>۲.۱۳.۰:</b> پروکسی فراخوانی سرویس‌های AI (خطای 403 ایران) + تست اتصال + سرویس xAI Grok + پیام‌های فارسی 403/401/429.
+    <br><b>۲.۱۲.۰:</b> رفع کامل «سازنده و چاپ پول» — مدل درست Z.ai (1211)، پیام فارسی موجودی (1113)، نصب خودکار edge-tts، تلاش مجدد 10054، صف Pollinations.
+    <br><b>۲.۱۱.۰:</b> پلتفرم هشتم <b>واتساپ وب</b> (ورود QR) + همین کادر تازه‌ها.
+  </div>
+</details>
+
+<!-- ============ داشبورد ============ -->
+<section id="tab-dashboard" class="tab active">
+  <h2>📊 داشبورد</h2>
+  <div class="grid c4" style="margin-bottom:16px">
+    <div class="stat"><div class="v" data-dyn="runs">0</div><div class="k">اجرای امروز</div></div>
+    <div class="stat"><div class="v" data-dyn="success">0</div><div class="k">موفق</div></div>
+    <div class="stat"><div class="v" data-dyn="fail">0</div><div class="k">ناموفق</div></div>
+    <div class="stat"><div class="v" data-dyn="sched">0</div><div class="k">زمان‌بندی فعال</div></div>
+  </div>
+  <div class="grid c2">
+    <div class="card">
+      <h3>🌐 وضعیت پلتفرم‌ها</h3>
+      <div id="dash-plats" class="grid" style="gap:8px"></div>
+    </div>
+    <div class="card">
+      <h3>⏰ زمان‌بندی‌های پیش‌رو</h3>
+      <div id="dash-sched" class="scroll" style="max-height:240px;overflow-y:auto"><span class="muted small">—</span></div>
+      <div class="divider"></div>
+      <h3>▶ آخرین نتیجه</h3>
+      <div id="dash-last" class="small muted">هنوز چیزی اجرا نشده</div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>📜 لاگ زنده</h3>
+    <div id="logfeed" class="logwrap"></div>
+  </div>
+</section>
+
+<!-- ============ پلتفرم‌ها ============ -->
+<section id="tab-platforms" class="tab">
+  <h2>🌐 پلتفرم‌ها</h2>
+  <p class="muted small" style="margin:-8px 0 14px">💡 <b>باز</b> = نشست مرورگر این پلتفرم همین حالا فعال است و دستورها فوراً اجرا می‌شوند · <b>بسته</b> = نشست فعالی نیست و اولین دستور چند ثانیه‌ای مرورگر را با همان پروفایل باز می‌کند. در هر دو حالت، لاگین‌ها و کوکی‌ها در پروفایل ذخیره می‌مانند. (نشانگر هر کارر را نگه دارید تا توضیح کامل را ببینید.)</p>
+  <div class="grid c3" id="plat-grid"></div>
+</section>
+
+<!-- ============ اجرای سریع ============ -->
+<section id="tab-quick" class="tab">
+  <h2>⚡ اجرای سریع</h2>
+  <div class="card">
+    <div class="row" style="align-items:flex-start">
+      <label class="f" style="flex:1;min-width:180px"><b>پلتفرم</b>
+        <select id="qr-platform"></select></label>
+      <label class="f" style="flex:1;min-width:180px"><b>اکشن</b>
+        <select id="qr-action"></select></label>
+    </div>
+    <div id="qr-params" class="row" style="align-items:flex-start"></div>
+    <div class="row">
+      <button class="btn primary" id="qr-run">▶ اجرا</button>
+      <span class="muted small" id="qr-runstate" data-dyn="qrstate"></span>
+    </div>
+  </div>
+  <div class="card hidden" id="qr-result"></div>
+</section>
+
+<!-- ============ زمان‌بندی ============ -->
+<section id="tab-sched" class="tab">
+  <h2>⏰ زمان‌بندی کارهای خودکار</h2>
+  <div class="grid c2" style="align-items:start">
+    <div class="card">
+      <h3>➕ زمان‌بندی جدید</h3>
+      <label class="f"><b>نوع وظیفه <span class="hint" data-tip="اکشن پلتفرم = کارهای آماده (فالو، لایک، پست و ...) · پخش ماکرو = هر ماکروی که در تب «ضبط ماکرو» ذخیره کرده‌اید، خودکار تکرار شود.">؟</span></b>
+        <select id="sch-kind">
+          <option value="action">⚡ اجرای اکشن پلتفرم</option>
+          <option value="macro">🎬 پخش ماکرو</option>
+        </select></label>
+      <label class="f"><b>عنوان</b><input type="text" id="sch-title" placeholder="مثلاً: فالو صبحگاهی اینستاگرام"></label>
+      <div class="row" style="align-items:flex-start">
+        <label class="f" style="flex:1;min-width:150px"><b>پلتفرم</b><select id="sch-platform"></select></label>
+        <label class="f" style="flex:1;min-width:150px" id="sch-action-wrap"><b>اکشن</b><select id="sch-action"></select></label>
+        <label class="f" style="flex:1;min-width:150px" id="sch-macro-wrap"><b>کدام ماکرو؟</b><select id="sch-macro"></select></label>
+      </div>
+      <div id="sch-params" class="row" style="align-items:flex-start"></div>
+      <div class="divider"></div>
+      <label class="f"><b>نوع زمان‌بندی</b>
+        <select id="sch-type">
+          <option value="interval">تکرارشونده — هر چند دقیقه یک‌بار</option>
+          <option value="daily">روزانه — در ساعت‌های مشخص</option>
+          <option value="once">یک‌بار — در تاریخ و ساعت مشخص</option>
+        </select></label>
+      <div id="sch-timing"></div>
+      <div class="divider"></div>
+      <label class="f" id="sch-pacing"><b>فاصله بین زیر-اکشن‌ها (ثانیه) <span class="hint" data-tip="وقتی یک کار چندتایی است (مثل فالو ۵ نفر)، بین هر کدام این فاصلهٔ تصادفی رعایت می‌شود تا رفتار طبیعی به نظر برسد.">؟</span></b>
+        <div class="row">
+          <input type="number" id="sch-dmin" placeholder="حداقل" style="flex:1" min="1">
+          <input type="number" id="sch-dmax" placeholder="حداکثر" style="flex:1" min="1">
+          <button class="btn sm warn" id="sch-safe">🛡 پیشنهاد ایمن</button>
+        </div></label>
+      <button class="btn primary" id="sch-save" style="width:100%">💾 ذخیره زمان‌بندی</button>
+    </div>
+    <div class="card">
+      <h3>🛡 راهنمای طبیعی جلوه دادن</h3>
+      <label class="f"><b>پلتفرم</b><select id="guide-platform"></select></label>
+      <div id="guide-box"></div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>📋 زمان‌بندی‌های ذخیره‌شده</h3>
+    <div id="sch-list" class="scroll" style="max-height:420px;overflow-y:auto"><span class="muted small">هنوز زمان‌بندی‌ای ندارید</span></div>
+  </div>
+</section>
+
+<!-- ============ رسانه‌ها ============ -->
+<section id="tab-media" class="tab">
+  <h2>🖼 رسانه‌ها (برای انتشار عکس/استوری/پست)</h2>
+  <div class="card">
+    <div class="dropzone" id="dz">
+      <div style="font-size:30px">📤</div>
+      <div><b>فایل‌ها را اینجا رها کنید</b> یا کلیک کنید</div>
+      <div class="small" style="margin-top:4px">عکس و ویدیو — برای پست/استوری/توییت استفاده می‌شود</div>
+      <input type="file" id="dz-input" multiple accept="image/*,video/*" class="hidden">
+    </div>
+  </div>
+  <div class="card">
+    <h3>📚 فایل‌های بارگذاری‌شده <span class="chip" id="media-count">0</span></h3>
+    <div class="media-grid" id="media-grid"></div>
+  </div>
+</section>
+
+<!-- ============ ضبط ماکرو ============ -->
+<section id="tab-macro" class="tab">
+  <h2>🎬 ضبط ماکرو</h2>
+  <div class="card">
+    <p class="muted small" style="margin-top:0">ضبط فقط با دکمهٔ «شروع ضبط» فعال می‌شود و با بالا آمدن سرور <b>خودکار شروع نمی‌شود</b>. بعد از شروع، فقط کارهایی که در <b>پنجرهٔ مرورگرِ همان شبکهٔ اجتماعی</b> انجام می‌دهید ضبط می‌شود — کلیک روی این پنل (مثل دکمهٔ «توقف و ذخیره») و کار در سایت‌ها/تب‌های دیگر <b>اصلاً ضبط نمی‌شود</b>. متن تایپ‌شده در چت‌ها (اینستاگرام/واتساپ/تلگرام) و کلید Enter هم ضبط می‌شود.</p>
+    <div class="row">
+      <label class="f" style="flex:1;min-width:160px;max-width:260px"><b>پلتفرم ضبط</b><select id="mc-platform"></select></label>
+      <span class="chip" id="mc-chip" data-dyn="macro">● غیرفعال</span>
+      <span class="chip" data-dyn="macroevents">۰ رخداد</span>
+      <span class="chip" data-dyn="macrodropped" style="display:none">۰ رویداد نادیده</span>
+      <span class="chip on" data-dyn="macroplaying" style="display:none">▶ در حال پخش…</span>
+    </div>
+    <div class="row">
+      <button class="btn danger" id="mc-start">🔴 شروع ضبط</button>
+      <input type="text" id="mc-name" placeholder="نام ماکرو (مثل: استوری-گذاشتن)" style="width:220px">
+      <button class="btn warn" id="mc-stop">⏹ توقف و ذخیره</button>
+      <button class="btn danger" id="mc-stoprun" style="display:none">⏹ توقف پخش</button>
+    </div>
+    <p class="muted small" style="margin-bottom:0">▶ پخش (۲.۱۵.۰): با «اجرا»، مرورگر <b>صفحهٔ اصلی همان پلتفرم</b> را باز می‌کند، ماکرو را اجرا می‌کند و آخرش <b>پنجرهٔ مرورگر را خودش می‌بندد</b>؛ وسطش هم که بخواهید، دکمهٔ «⏹ توقف پخش» همین‌جا ظاهر می‌شود.</p>
+  </div>
+  <div class="card">
+    <h3>💾 ماکروهای ذخیره‌شده</h3>
+    <p class="muted small" style="margin-top:0">هر ماکرو <b>پلتفرمِ لحظهٔ ضبطش</b> را کنارش نشان می‌دهد و همان‌جا پخش می‌شود — دیگر پلتفرمِ جدا انتخاب نمی‌خواهد (فقط ماکروهای قدیمیِ بدون پلتفرم، دراپ‌داون مخصوص خودشان را دارند). با «📅 زمان‌بندی» پخشش خودکار می‌شود — تکرارشونده، روزانه یا یک‌بار، با جیتر و مکث شبانه.</p>
+    <div id="mc-list" class="scroll" style="max-height:320px;overflow-y:auto"></div>
+  </div>
+</section>
+
+<!-- ============ هوش مصنوعی ============ -->
+<section id="tab-ai" class="tab">
+  <h2>🧠 هوش مصنوعی — ایجنت خودمختار</h2>
+  <p class="muted small" style="margin:-8px 0 14px">فقط <b>ایده را بگویید</b>؛ ایجنت خودش برنامه می‌سازد، برای هر پلتفرم محتوا تولید می‌کند، <b>عکس و ویدیو می‌سازد</b>، دایرکت‌ها را <b>طبیعی جواب می‌دهد</b>، زمان انتشار را می‌چیند، استراتژی فالو را تصمیم می‌گیرد و آخر کار <b>گزارش فارسی</b> می‌دهد. سرویس و مدل را اینجا یا از تب تنظیمات انتخاب کنید — مدل‌های <b>Z.ai (GLM)</b> اول لیست‌اند.</p>
+
+  <div class="card" style="border-color:var(--accent-b,#10b98133)">
+    <h3>🎬 چاپخانهٔ ویدیو <span class="chip on">سبک MoneyPrinterTurbo</span></h3>
+    <p class="muted small" style="margin-top:0">موضوع را بدهید؛ خودش <b>فیلم‌نامه می‌نویسد</b>، با صدای طبیعی <b>گویندگی می‌کند</b> (رایگان — edge-tts)، برای هر صحنه <b>با AI عکس می‌سازد</b>، <b>زیرنویس فارسی</b> را روی ویدیو حک می‌کند و MP4 آمادهٔ انتشار تحویل می‌دهد — الهام‌گرفته از پروژهٔ متن‌باز معروف MoneyPrinterTurbo.</p>
+    <div class="row" style="align-items:flex-start">
+      <label class="f" style="flex:3;min-width:220px"><b>موضوع ویدیو <span class="hint" data-tip="مثلاً: ۵ نکتهٔ طلایی عکاسی با موبایل — به هر زبانی؛ اگر صدا فارسی باشد فیلم‌نامه هم فارسی نوشته می‌شود">؟</span></b>
+        <textarea id="vd-topic" rows="2" placeholder="مثلاً: معرفی فروشگاه ما در ۴۵ ثانیه — تخفیف ویژهٔ پایان فصل"></textarea></label>
+      <label class="f" style="flex:1;min-width:130px"><b>گوینده</b><select id="vd-voice"></select></label>
+      <label class="f" style="flex:1;min-width:120px"><b>نسبت تصویر</b><select id="vd-aspect"></select></label>
+      <label class="f" style="flex:1;min-width:100px"><b>طول (ثانیه)</b><input type="number" id="vd-seconds" value="45" min="15" max="180"></label>
+      <label class="f" style="flex:1;min-width:130px"><b>تصویر صحنه‌ها <span class="hint" data-tip="AI = برای هر صحنه عکس تازه با تصویرساز می‌سازد · کتابخانه = از عکس‌های تب «رسانه‌ها» · ترکیبی = هر دو">؟</span></b>
+        <select id="vd-material"><option value="ai">ساخت با AI (پیشنهادی)</option><option value="mixed">ترکیبی</option><option value="library">از کتابخانهٔ من</option></select></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="vd-go">🎬 بساز! (چند دقیقه)</button>
+      <span class="muted small" id="vd-status">موجودی موسیقی پس‌زمینه: اگر فایل mp3 در پوشهٔ <span dir="ltr">media/music</span> بگذارید، خودکار و ملایم زیر صدا می‌رود.</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>🎨 ساخت عکس با AI <span class="chip on">Z.ai GLM-Image / رایگانِ محدود</span></h3>
+    <p class="muted small" style="margin-top:0">توضیح بدهید و عکس بگیرید — مستقیم داخل «رسانه‌ها» ذخیره می‌شود تا در پست/استوری استفاده شود. اگر سرویس اصلی کلید نداشته باشد یا خطا بدهد، خودکار به <b>Pollinations (رایگانِ محدود — ۱ درخواست هم‌زمان و فاصلهٔ ~۱۵ ثانیه)</b> برمی‌گردد. روی Z.ai فقط مدل <span dir="ltr">glm-image</span> معتبر است (CogView فقط روی پلتفرم چینیِ Zhipu است و خطای 1211 می‌دهد).</p>
+    <div class="row" style="align-items:flex-start">
+      <label class="f" style="flex:3;min-width:220px"><b>توضیح عکس (پرامپت) <span class="hint" data-tip="فارسی یا انگلیسی؛ هرچه دقیق‌تر بهتر: سوژه، حال‌وهوا، سبک، نور">؟</span></b>
+        <textarea id="im-prompt" rows="2" placeholder="مثلاً: میز چوبی کافه با فنجان قهوه و نور صبح، سبک مینیمال"></textarea></label>
+      <label class="f" style="flex:1;min-width:140px"><b>تصویرساز</b><select id="im-provider"></select></label>
+      <label class="f" style="flex:1;min-width:130px"><b>مدل</b><select id="im-model"></select></label>
+      <label class="f" style="flex:1;min-width:130px"><b>اندازه</b><select id="im-size"></select></label>
+      <label class="f" style="flex:1;min-width:70px"><b>تعداد</b><input type="number" id="im-count" value="1" min="1" max="4"></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="im-go">🎨 بساز</button>
+      <span class="muted small" id="im-status">خروجی‌ها در تب «رسانه‌ها» هم می‌آیند.</span>
+    </div>
+    <div class="media-grid" id="im-results" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h3>💬 پاسخ‌گوی خودکار دایرکت <span class="chip" id="dm-chip">● خاموش</span></h3>
+    <p class="muted small" style="margin-top:0">در هر پلتفرمی که روشنش کنید، گفتگوهایی که آخرین پیامشان از طرف مقابل است را پیدا می‌کند و با <b>شخصیت و لحن شما</b> جواب طبیعی می‌نویسد — مثل انسان تایپ می‌کند و می‌فرستد. اول با <b>پیش‌نمایش</b> (ارسال نمی‌کند) امتحانش کنید.</p>
+    <div class="row" style="align-items:flex-start">
+      <label class="f" style="flex:2;min-width:220px"><b>معرفی شما/کسب‌وکارتان (شخصیت جواب‌ها)</b>
+        <textarea id="dm-persona" rows="2" placeholder="مثلاً: پیج فروشگاه گیاهان آپارتمانی دارم؛ لحن دوستانه؛ ارسال تهران، سفارش از دایرکت"></textarea></label>
+      <label class="f" style="flex:2;min-width:200px"><b>لحن و قواعد</b>
+        <input type="text" id="dm-tone" placeholder="صمیمی و محترمانه — فارسی روان"></label>
+    </div>
+    <div class="row" style="align-items:flex-start;margin-top:8px">
+      <div class="f" style="flex:2;min-width:220px"><b>پلتفرم‌ها</b><div class="row" id="dm-plats" style="gap:8px;flex-wrap:wrap"></div></div>
+      <label class="f" style="flex:1;min-width:110px"><b>سقف روزانه</b><input type="number" id="dm-cap" value="40" min="1" max="200"></label>
+      <label class="f" style="flex:1;min-width:110px"><b>هر چند دقیقه</b><input type="number" id="dm-roundmin" value="20" min="5" max="180"></label>
+      <label class="f" style="flex:1;min-width:110px"><b>حداقل فاصلهٔ جواب‌ها (دقیقه)</b><input type="number" id="dm-gap" value="12" min="1" max="120"></label>
+      <label class="f" style="flex:1;min-width:100px"><b>ساعت فعال (از — تا)</b>
+        <div class="row"><input type="number" id="dm-h-lo" value="9" min="0" max="23" style="width:70px"><input type="number" id="dm-h-hi" value="23" min="1" max="24" style="width:70px"></div></label>
+    </div>
+    <div class="setrow" style="margin-top:6px"><span class="lbl">حالت پیش‌نمایش (فقط نشان بده، ارسال نکن) <span class="hint" data-tip="تا وقتی روشن است، ایجنت فقط جواب‌های پیشنهادی را در همین پنل نشان می‌دهد و هیچ پیامی نمی‌فرستد.">؟</span></span><label class="switch"><input type="checkbox" id="dm-dry" checked><span class="slider"></span></label></div>
+    <div class="row" style="margin-top:10px">
+      <button class="btn primary" id="dm-start">▶ روشن کردن</button>
+      <button class="btn warn" id="dm-stop">⏹ خاموش کردن</button>
+      <select id="dm-preview-p" style="max-width:180px"></select>
+      <button class="btn" id="dm-preview-btn">🔍 پیش‌نمایش (بدون ارسال)</button>
+      <span class="muted small" id="dm-stats"></span>
+    </div>
+    <div id="dm-preview" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h3>🧵 کارهای ساخت رسانه <span class="chip" id="ai-jcount">۰</span></h3>
+    <div id="ai-jobs" class="scroll" style="max-height:340px;overflow-y:auto"><span class="muted small">هنوز کاری شروع نشده — از دو کارت بالا عکس یا ویدیو بسازید.</span></div>
+  </div>
+
+  <div class="grid c2" style="align-items:start">
+    <div class="card">
+      <h3>🚀 ماموریت جدید</h3>
+      <div class="row" style="align-items:flex-start">
+        <label class="f" style="flex:1;min-width:150px"><b>سرویس AI <span class="hint" data-tip="Z.ai (GLM) پیشنهاد ماست و دو مدل Flash آن رایگان‌اند. Groq و OpenRouter هم گزینه‌های رایگان دارند. کلید هر سرویس را از تب تنظیمات ← هوش مصنوعی وارد کنید.">؟</span></b>
+          <select id="ai-provider"></select></label>
+        <div class="f" style="flex:1;min-width:170px"><b>مدل <span class="hint" data-tip="با دکمهٔ 🔄 فهرست مدل‌های «همین لحظه» مستقیم از خود سرویس (با کلید شما) می‌آید — سرویس‌ها مدل‌های قدیمی را حذف می‌کنند و اگر خطای 404 «مدل وجود ندارد» گرفتید، از این دکمه فهرست تازه بگیرید و مدل جدید را انتخاب کنید.">؟</span></b>
+          <div class="row" style="gap:6px;align-items:center"><select id="ai-model" style="flex:1"></select><button type="button" class="btn ghost" id="ai-model-live" title="دریافت فهرست مدل‌های زنده از خود سرویس" style="padding:8px 10px;white-space:nowrap">🔄</button></div></div>
+        <label class="f" style="flex:1;min-width:150px"><b>سطح خودمختاری <span class="hint" data-tip="پیشنهادی = برنامه را نشان می‌دهد و با تأیید شما اجرا می‌شود · نیمه‌خودکار = خودش اجرا می‌کند، فقط انتشار فوری تأیید می‌خواهد · کاملاً خودمختار = هیچ سؤالی نمی‌پرسد. سقف‌های امن در هر سه حالت همیشه رعایت می‌شوند.">؟</span></b>
+          <select id="ai-autonomy">
+            <option value="manual">پیشنهادی — با تأیید من</option>
+            <option value="semi" selected>نیمه‌خودکار (توصیه)</option>
+            <option value="auto">کاملاً خودمختار</option>
+          </select></label>
+      </div>
+      <label class="f"><b>ایده یا ماموریت — فارسی، مثل حرف زدن با یک همکار</b>
+        <textarea id="ai-instruction" rows="4" placeholder="مثلاً: این ۷ ایده را این هفته بگیر و برای هر کدام ۳ پست بساز؛ در تلگرام (کانال من) و توییتر منتشر کن و آخر هفته گزارش بده — ایده‌ها: …"></textarea></label>
+      <div class="row" id="ai-examples" style="gap:6px"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn primary" id="ai-create" style="font-size:15px;padding:12px 26px">🚀 شروع ماموریت</button>
+        <span class="muted small" id="ai-keyhint"></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>💬 گفتگوی سریع با مدل</h3>
+      <div id="ai-chatlog" class="scroll" style="max-height:300px;overflow-y:auto;background:#0a0e17;border:1px solid var(--border);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px"><span class="muted small">سؤالتان را بپرسید — با همان مدل انتخابی بالا.</span></div>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="ai-chatin" placeholder="سؤال، ایده یا درخواست…" style="flex:1">
+        <button class="btn primary" id="ai-chatsend">ارسال</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>📋 ماموریت‌ها <span class="chip" id="ai-mcount">۰</span></h3>
+    <div id="ai-missions"><span class="muted small">هنوز ماموریتی ساخته نشده — از فرم بالا اولین ایده‌تان را بدهید</span></div>
+  </div>
+</section>
+
+<!-- ============ تنظیمات ============ -->
+<section id="tab-settings" class="tab">
+  <h2>⚙ تنظیمات</h2>
+
+  <div class="card">
+    <h3>🧪 تست بات</h3>
+    <p class="muted small" style="margin-top:0">یک مرورگر با پروفایل همان پلتفرم باز می‌کند و بررسی می‌کند ردپای ربات مخفی مانده است یا نه. جزئیات کامل در تب «راهنما».</p>
+    <div class="row">
+      <select id="tb-platform" style="max-width:220px"></select>
+      <button class="btn primary" id="tb-run">🧪 اجرای تست بات</button>
+    </div>
+    <div id="tb-result" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <h3>🖥 عمومی</h3>
+    <div class="setrow"><span class="lbl">اجرای مرورگر در پس‌زمینه (headless) <span class="hint" data-tip="خاموش = پنجرهٔ واقعی مرورگر باز می‌شود (پیشنهادی و طبیعی‌تر). روشن = بدون پنجره، ولی بیشتر شناسایی می‌شوید و برای ورود/کپچا مناسب نیست.">؟</span></span><label class="switch"><input type="checkbox" id="set-headless"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">مرورگر ترجیحی <span class="hint" data-tip="خودکار = اول Edge، بعد Chrome، بعد Chromium داخلی Playwright — اگر یکی باز نشد، بعدی امتحان می‌شود. اگر Chromium داخل Playwright نصب نباشد، خودش با آینهٔ npmmirror دانلود می‌شود. Firefox هم انتخاب شدنی است.">؟</span></span>
+      <select id="set-channel" style="max-width:220px"><option value="auto">خودکار (Edge → Chrome → Chromium)</option><option value="msedge">Edge</option><option value="chrome">Chrome</option><option value="firefox">Firefox</option><option value="chromium">Chromium (داخل Playwright)</option></select></div>
+    <div class="setrow"><span class="lbl">پروکسی (مهم برای اینستاگرام/توییتر/فیسبوک) <span class="hint" data-tip="این سایت‌ها اتصال از IP ایران را نمی‌پذیرند؛ آدرس VPN خود را بدهید تا مرورگر پارس‌ایجنت هم مثل Edge از آن استفاده کند. مثلاً v2rayN/Nekoray: http://127.0.0.1:10809 یا socks5://127.0.0.1:10808 — بدون http:// هم قبول است. خالی یعنی: اگر پروکسی سیستم روشن باشد، خودکار از آن استفاده می‌شود.">؟</span></span><input type="text" id="set-proxy" placeholder="مثلاً http://127.0.0.1:10809" style="max-width:280px;direction:ltr"></div>
+  </div>
+
+  <div class="card">
+    <h3>🥷 ضد شناسایی بات — پیشرفته <span class="chip on">۱۹ ماژول · متد روز دنیا</span></h3>
+    <p class="muted small" style="margin-top:0">بر اساس متدهای مدرن: <b>اثر انگشت پایدار</b> — هر پروفایل یک «سیستم مشخص» ثابت دارد؛ چون نویزی که هر بار عوض شود، خودش توسط سیستم‌های ضد ربات (CreepJS و هم‌قبیلانش) لو می‌رود. برای جزئیات هر گزینه روی «؟» بروید و کل توضیح‌ها در تب «راهنما» هست.</p>
+    <div class="setrow"><span class="lbl"><b>فعال‌سازی کلی</b> <span class="hint" data-tip="کل مجموعهٔ ضد شناسایی را روشن/خاموش می‌کند — حتماً روشن بماند.">؟</span></span><label class="switch"><input type="checkbox" id="st-enabled"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">سطح سریع <span class="hint" data-tip="پایه = فقط ضروری‌ها (سریع‌ترین) · استاندارد = تعادل امنیت/سرعت (توصیه‌شده) · حداکثر = همهٔ ماژول‌ها + تایپ کندتر. بعد از اعمال، تک‌تک را می‌توانید دستی تغییر دهید.">؟</span></span>
+      <div class="row">
+        <button class="btn sm" type="button" data-level="basic">🥉 پایه</button>
+        <button class="btn sm warn" type="button" data-level="standard">🥈 استاندارد (توصیه)</button>
+        <button class="btn sm danger" type="button" data-level="max">🥇 حداکثر</button>
+      </div></div>
+
+    <div class="stgroup">🪪 گروه ۱ — هویت مرورگر</div>
+    <div class="setrow"><span class="lbl">مخفی کردن navigator.webdriver <span class="hint" data-tip="مهم‌ترین نشانهٔ ربات بودن؛ حتماً روشن بماند.">؟</span></span><label class="switch"><input type="checkbox" id="st-webdriver"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">زبان‌های مرورگر فارسی <span class="hint" data-tip="لیست زبان‌ها را fa-IR, fa, en نشان می‌دهد — با زبان واقعی سیستم شما هماهنگ است.">؟</span></span><label class="switch"><input type="checkbox" id="st-langs"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">شبیه‌سازی پلاگین‌ها <span class="hint" data-tip="مرورگرهای عادی ۵ پلاگین PDF دارند؛ مرورگر خودکار صفر — همین تفاوت قدیمی‌ترین شکارچین بات‌هاست.">؟</span></span><label class="switch"><input type="checkbox" id="st-plugins"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">window.chrome کامل (runtime/app) <span class="hint" data-tip="مرورگر واقعی همیشه window.chrome.runtime و app و loadTimes دارد؛ نبود یا ناقص بودنش نشانهٔ اتوماسیون است.">؟</span></span><label class="switch"><input type="checkbox" id="st-chrome"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">تعمیر مجوزها (Permissions API) <span class="hint" data-tip="پرس‌وجوی مجوز نوتیفیکیشن را مثل یک کاربر واقعی جواب می‌دهد، نه حالت تعلیق‌شدهٔ ربات.">؟</span></span><label class="switch"><input type="checkbox" id="st-perm"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">حذف Headless از User-Agent <span class="hint" data-tip="اگر مجبور به حالت بدون رابط شده‌اید، حداقل کلمهٔ Headless از UA پاک می‌شود.">؟</span></span><label class="switch"><input type="checkbox" id="st-uafix"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">جعل UA دلخواه <span class="hint" data-tip="پیش‌فرض خاموش بماند — چون از مرورگر واقعی (Edge/Chrome) استفاده می‌کنیم، UA خودش واقعی است و جعل UA فقط وقتایی لازم می‌شود که headless روشن است. جعل بد حتی مضر است (تناقض با سایر مشخصه‌ها).
+">؟</span></span><label class="switch"><input type="checkbox" id="st-ua"><span class="slider"></span></label></div>
+    <div class="setrow hidden" id="st-ua-row"><span class="lbl">متن UA سفارشی</span><input type="text" id="st-ua-val" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64)..." style="max-width:340px;direction:ltr"></div>
+
+    <div class="stgroup">🧬 گروه ۲ — اثر انگشت دیجیتال (پایدار)</div>
+    <div class="setrow"><span class="lbl">پوشاندن کارت گرافیک (WebGL) <span class="hint" data-tip="به‌جای مدل واقعی، یکی از رندررهای واقع‌نمای ANGLE (اینتل/انویدیا/AMD) نشان می‌دهد — برای هر پروفایل ثابت انتخاب می‌شود.">؟</span></span><label class="switch"><input type="checkbox" id="st-webgl"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">نویز پایدار Canvas <span class="hint" data-tip="اثر انگشت تصویری با یک جابجایی پیکسلِ ثابت (برگرفته از seed پروفایل) تغییر می‌کند و بین اجراها همان می‌ماند — نه هر بار یک عدد تصادفی، چون آن‌طور CreepJS فوراً می‌فهمد تقلب شده.">؟</span></span><label class="switch"><input type="checkbox" id="st-canvas"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">نویز صدا (AudioContext) <span class="hint" data-tip="اثر انگشت صوتی را با یک نویز بسیار ریزِ پایدار تغییر می‌دهد.">؟</span></span><label class="switch"><input type="checkbox" id="st-audio"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">ماسک فونت‌ها <span class="hint" data-tip="شمارش فونت‌ها را کنترل می‌کند: فونت‌های رایج ویندوز = «دارد»، فونت ساختگی = «ندارد» — تا از تعداد و نوع فونت‌ها نتوان شما را یکتا و ربات تشخیص داد.">؟</span></span><label class="switch"><input type="checkbox" id="st-font"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">مشخصات سخت‌افزار واقع‌نما <span class="hint" data-tip="تعداد هستهٔ CPU و رم از استخر واقعی (۴ تا ۱۶ هسته / ۴ تا ۱۶ گیگ) — برای هر پروفایل ثابت.">؟</span></span><label class="switch"><input type="checkbox" id="st-hw"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl warnlbl">شیلد WebRTC <span class="hint" data-tip="جلوگیری از لو رفتن IP محلی از طریق WebRTC. هشدار: ممکن است تماس صوتی/تصویری تلگرام/بله/روبیکا را به هم بریزد — فقط اگر واقعاً لازم است روشن کنید.
+">؟</span></span><label class="switch"><input type="checkbox" id="st-webrtc"><span class="slider"></span></label></div>
+
+    <div class="stgroup">🧠 گروه ۳ — رفتار انسانی</div>
+    <div class="setrow"><span class="lbl">تایپ انسانی (حرف‌به‌حرف) <span class="hint" data-tip="متن‌ها حرف‌به‌حرف با سرعت متغیر تایپ می‌شوند و گاهی مکث «فکر کردن» می‌کنند — نه یکجا Paste.">؟</span></span>
+      <div class="row" style="flex-wrap:nowrap"><label class="switch"><input type="checkbox" id="st-typing"><span class="slider"></span></label>
+        <select id="st-speed" style="max-width:150px">
+          <option value="fast">سرعت: تند</option>
+          <option value="human" selected>سرعت: انسانی</option>
+          <option value="slow">سرعت: کند (محتاط)</option>
+          <option value="off">سرعت: فوری</option>
+        </select></div></div>
+    <div class="setrow"><span class="lbl">فاصلهٔ تصادفی بین اکشن‌ها <span class="hint" data-tip="قبل از هر کلیک، مکث کوتاه تصادفی.">؟</span></span><label class="switch"><input type="checkbox" id="st-delays"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">حرکت موس با مسیر منحنی <span class="hint" data-tip="موس به‌جای پرش ناگهانی، با مسیر بازیجی (12 تا 24 گام) روی دکمه‌ها می‌رود — موسِ ربات‌ها خط راست است.">؟</span></span><label class="switch"><input type="checkbox" id="st-mouse"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">اسکرول تصادفی در صفحات <span class="hint" data-tip="بعد از باز شدن هر صفحه، گاهی کمی اسکرول می‌شود — انسان‌ها صفحه را کامل نمی‌بینند، ربات‌ها هم نباید.">؟</span></span><label class="switch"><input type="checkbox" id="st-scroll"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">مکث کوتاه پس از هر اکشن <span class="hint" data-tip="بعد از هر کار، لحظه‌ای می‌مانیم و بعد می‌رویم — نه اینکه پشت‌سرهم کاری تمام شود.">؟</span></span><label class="switch"><input type="checkbox" id="st-dwell"><span class="slider"></span></label></div>
+    <div class="setrow"><span class="lbl">مکث شبانه (۱ تا ۷ بامداد) <span class="hint" data-tip="در این ساعات هیچ انسانی فعال نیست؛ زمان‌بندی‌ها اجرا نمی‌شوند و به بعد از سحر موکول می‌شوند.">؟</span></span><label class="switch"><input type="checkbox" id="st-night"><span class="slider"></span></label></div>
+
+    <div class="divider"></div>
+    <label class="f"><b>🧩 گروه ۴ — فعال برای کدام پلتفرم‌ها؟</b>
+      <div class="row" id="st-perplat"></div></label>
+  </div>
+
+  <div class="card">
+    <h3>🔑 ورود خودکار (نام کاربری و رمز)</h3>
+    <p class="muted small" style="margin-top:0">وقتی از دکمهٔ «ورود» استفاده کنید، این اطلاعات در صفحهٔ ورود خودکار تایپ می‌شوند. فایل فقط روی همین سیستم ذخیره می‌شود. رمز خالی بماند یعنی «بدون تغییر».</p>
+    <div class="grid" id="cred-grid"></div>
+    <button class="btn primary" id="cred-save">💾 ذخیره اطلاعات ورود</button>
+  </div>
+
+  <div class="card">
+    <h3>🧠 هوش مصنوعی — سرویس، مدل و کلیدها</h3>
+    <p class="muted small" style="margin-top:0">ایجنت خودمختار از این سرویس‌ها استفاده می‌کند. پیشنهاد ما <b>Z.ai (GLM)</b> است — دو مدل Flash آن رایگان‌اند و <b>از ایران مستقیم (بدون فیلترشکن) کار می‌کند</b>. Groq و OpenRouter هم گزینه‌های رایگان دارند. برای گرفتن هر کلید، روی <b>«؟»</b> کنار همان سرویس بزنید — آموزش گام‌به‌گام و لینک ساختن کلید باز می‌شود. کلیدها فقط در فایل محلی <span dir="ltr">config/settings.json</span> ذخیره می‌شوند. همین مدل‌ها در تب «هوش مصنوعی» هم قابل انتخاب‌اند. <b>برای Groq / Gemini / OpenAI / Anthropic / xAI در ایران، فیلد «پروکسی فراخوانی سرویس‌ها» (پایین همین صفحه) را پر کنید</b> — وگرنه خطای 403 می‌گیرید.</p>
+    <div class="row" style="align-items:flex-start">
+      <label class="f" style="flex:1;min-width:170px"><b>سرویس پیش‌فرض</b><select id="ai-def-provider"></select></label>
+      <div class="f" style="flex:1;min-width:190px"><b>مدل پیش‌فرض <span class="hint" data-tip="با دکمهٔ 🔄 فهرست مدل‌های «همین لحظه» مستقیم از خود سرویس (با کلید شما) می‌آید — سرویس‌ها مدل‌های قدیمی را حذف می‌کنند (مثلاً Groq مدل‌های Llama 3.x را بسته است و خطای 404 می‌دهد). بعد از دریافت، مدل جدید را انتخاب و تنظیمات را ذخیره کنید.">؟</span></b>
+        <div class="row" style="gap:6px;align-items:center"><select id="ai-def-model" style="flex:1"></select><button type="button" class="btn ghost" id="ai-def-model-live" title="دریافت فهرست مدل‌های زنده از خود سرویس" style="padding:8px 10px;white-space:nowrap">🔄</button></div></div>
+      <label class="f" style="flex:1;min-width:170px"><b>سطح خودمختاری پیش‌فرض</b>
+        <select id="ai-def-autonomy">
+          <option value="manual">پیشنهادی — با تأیید من</option>
+          <option value="semi" selected>نیمه‌خودکار (توصیه)</option>
+          <option value="auto">کاملاً خودمختار</option>
+        </select></label>
+    </div>
+    <div class="row" style="align-items:flex-start">
+      <label class="f" style="flex:1;min-width:130px"><b>خلاقیت (دمای مدل) <span class="hint" data-tip="۰ = خشک و دقیق · ۱ = خلاق و پرریسک. برای تولید محتوا ۰٫۶ تا ۰٫۸ خوب است.">؟</span></b><input type="number" id="ai-temp" min="0" max="1" step="0.1" value="0.7"></label>
+      <label class="f" style="flex:1;min-width:130px"><b>سقف پست در روز <span class="hint" data-tip="ایجنت هرگز بیشتر از این تعداد پست را برای انتشار در یک روز قرار نمی‌دهد.">؟</span></b><input type="number" id="ai-maxposts" min="1" max="10" value="4"></label>
+    </div>
+    <label class="f"><b>🔑 کلیدهای API — روی «؟» هر سرویس بزنید تا آموزشِ گرفتن کلید و لینکش باز شود (فقط روی همین سیستم ذخیره می‌شوند)</b>
+      <div class="grid c2" style="gap:10px">
+        <div class="f" style="margin:0"><b>Z.ai (GLM) — پیشنهادی <button type="button" class="keyhint" data-kb="zai" title="آموزش گرفتن کلید Z.ai">؟</button></b>
+          <input type="password" data-aikey="zai" placeholder="کلید از z.ai">
+          <div class="keybox hidden" data-keybox="zai">
+            <div class="ttl">🔑 گرفتن کلید Z.ai (پیشنهادی ما)</div>
+            <ol>
+              <li>وارد <span dir="ltr">z.ai</span> شوید و با ایمیل/گوگل ثبت‌نام کنید — از ایران مستقیم باز می‌شود.</li>
+              <li>از منوی پروفایل (بالا) به بخش <b>API Keys</b> بروید یا لینک زیر را باز کنید.</li>
+              <li><b>Create new API key</b> را بزنید، کلید را کپی و همین‌جا بچسبانید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://z.ai/manage-apikey/apikey-list" target="_blank" rel="noopener" dir="ltr">z.ai/manage-apikey/apikey-list</a></div>
+            <div class="note">💡 دو مدل <b>GLM-4.5-Flash</b> و <b>GLM-4-Flash</b> کاملاً رایگان‌اند — برای شروع همین‌ها کافی‌اند.</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>OpenAI <button type="button" class="keyhint" data-kb="openai" title="آموزش گرفتن کلید OpenAI">؟</button></b>
+          <input type="password" data-aikey="openai" placeholder="sk-..." dir="ltr">
+          <div class="keybox hidden" data-keybox="openai">
+            <div class="ttl">🔑 گرفتن کلید OpenAI</div>
+            <ol>
+              <li>وارد <span dir="ltr">platform.openai.com</span> شوید و ثبت‌نام کنید.</li>
+              <li>از بخش <b>Billing</b> حداقل ۵ دلار شارژ کنید (بدون شارژ، API کار نمی‌کند).</li>
+              <li>از منو <b>API keys</b> → <b>Create new secret key</b> را بزنید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener" dir="ltr">platform.openai.com/api-keys</a></div>
+            <div class="note">⚠️ این سایت در ایران بدون فیلترشکن باز نمی‌شود. کلید فقط یک‌بار نمایش داده می‌شود — همان لحظه کپی کنید (با sk- شروع می‌شود).</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>Anthropic (Claude) <button type="button" class="keyhint" data-kb="anthropic" title="آموزش گرفتن کلید Anthropic">؟</button></b>
+          <input type="password" data-aikey="anthropic" placeholder="sk-ant-..." dir="ltr">
+          <div class="keybox hidden" data-keybox="anthropic">
+            <div class="ttl">🔑 گرفتن کلید Anthropic (Claude)</div>
+            <ol>
+              <li>وارد <span dir="ltr">console.anthropic.com</span> شوید و ثبت‌نام کنید.</li>
+              <li>از <b>Settings ← API keys</b> گزینهٔ <b>Create Key</b> را بزنید.</li>
+              <li>برای فعال‌سازی، از <b>Billing</b> اعتبار بخرید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" dir="ltr">console.anthropic.com/settings/keys</a></div>
+            <div class="note">⚠️ در ایران نیاز به فیلترشکن دارد. کلید با sk-ant- شروع می‌شود.</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>Google Gemini <button type="button" class="keyhint" data-kb="gemini" title="آموزش گرفتن کلید Gemini">؟</button></b>
+          <input type="password" data-aikey="gemini" placeholder="از aistudio.google.com" dir="ltr">
+          <div class="keybox hidden" data-keybox="gemini">
+            <div class="ttl">🔑 گرفتن کلید Google Gemini</div>
+            <ol>
+              <li>وارد <span dir="ltr">aistudio.google.com</span> شوید (با حساب گوگل).</li>
+              <li>روی <b>Get API key</b> بزنید و <b>Create API key</b> را انتخاب کنید.</li>
+              <li>کلید را کپی و همین‌جا بچسبانید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" dir="ltr">aistudio.google.com/apikey</a></div>
+            <div class="note">💡 در حال حاضر رایگان است — بدون شارژ کار می‌کند. ⚠️ <b>از ایران فقط با پروکسی:</b> گوگل IP ایران را با خطای 403 می‌بندد — پایین همین صفحه، فیلد «پروکسی فراخوانی سرویس‌ها» را پر کنید (مثلاً <span dir="ltr">http://127.0.0.1:10809</span>) وگرنه خطای 403 می‌گیرید.</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>xAI Grok (گروک) — ۲.۱۳.۰ <button type="button" class="keyhint" data-kb="grok" title="آموزش گرفتن کلید xAI Grok">؟</button></b>
+          <input type="password" data-aikey="grok" placeholder="از console.x.ai (xai-...)" dir="ltr">
+          <div class="keybox hidden" data-keybox="grok">
+            <div class="ttl">🔑 گرفتن کلید xAI Grok (گروک)</div>
+            <ol>
+              <li>وارد <span dir="ltr">console.x.ai</span> شوید و ثبت‌نام کنید (ایمیل/حساب X).</li>
+              <li>از منو <b>API Keys</b> → <b>Create API key</b> را بزنید.</li>
+              <li>کلید (با پیشوند <span dir="ltr">xai-</span>) را کپی و همین‌جا بچسبانید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://console.x.ai" target="_blank" rel="noopener" dir="ltr">console.x.ai</a></div>
+            <div class="note">⚠️ <b>از ایران فقط با پروکسی:</b> x.ai درخواست از IP ایران را با خطای 403 می‌بندد — پایین همین صفحه، فیلد «پروکسی فراخوانی سرویس‌ها» را پر کنید و بعد با دکمهٔ «تست اتصال» امتحانش کنید.</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>Groq (رایگان) <button type="button" class="keyhint" data-kb="groq" title="آموزش گرفتن کلید Groq">؟</button></b>
+          <input type="password" data-aikey="groq" placeholder="از console.groq.com" dir="ltr">
+          <div class="keybox hidden" data-keybox="groq">
+            <div class="ttl">🔑 گرفتن کلید Groq (رایگان)</div>
+            <ol>
+              <li>وارد <span dir="ltr">console.groq.com</span> شوید و ثبت‌نام کنید.</li>
+              <li>از منو <b>API Keys</b> → <b>Create API Key</b> را بزنید.</li>
+              <li>کلید را کپی و همین‌جا بچسبانید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://console.groq.com/keys" target="_blank" rel="noopener" dir="ltr">console.groq.com/keys</a></div>
+            <div class="note">💡 سطح رایگان سخاوتمندانه دارد و سریع‌ترین سرویس متن‌باز است — کلید با gsk_ شروع می‌شود. ⚠️ <b>از ایران معمولاً خطای 403 می‌دهد</b> (سایت Groq درخواست ایران را می‌بندد): پایین همین صفحه، فیلد «پروکسی فراخوانی سرویس‌ها» را پر کنید (مثلاً <span dir="ltr">http://127.0.0.1:10809</span>) و بعد «تست اتصال» را بزنید.</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>DeepSeek <button type="button" class="keyhint" data-kb="deepseek" title="آموزش گرفتن کلید DeepSeek">؟</button></b>
+          <input type="password" data-aikey="deepseek" placeholder="از platform.deepseek.com" dir="ltr">
+          <div class="keybox hidden" data-keybox="deepseek">
+            <div class="ttl">🔑 گرفتن کلید DeepSeek</div>
+            <ol>
+              <li>وارد <span dir="ltr">platform.deepseek.com</span> شوید و ثبت‌نام کنید.</li>
+              <li>از بخش <b>API keys</b> گزینهٔ <b>Create new key</b> را بزنید.</li>
+              <li>از بخش Charging حساب را شارژ کنید (نرخ‌ها ارزان است).</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noopener" dir="ltr">platform.deepseek.com/api_keys</a></div>
+            <div class="note">💡 ارزان است ولی بدون شارژ کار نمی‌کند.</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>OpenRouter <button type="button" class="keyhint" data-kb="openrouter" title="آموزش گرفتن کلید OpenRouter">؟</button></b>
+          <input type="password" data-aikey="openrouter" placeholder="از openrouter.ai" dir="ltr">
+          <div class="keybox hidden" data-keybox="openrouter">
+            <div class="ttl">🔑 گرفتن کلید OpenRouter</div>
+            <ol>
+              <li>وارد <span dir="ltr">openrouter.ai</span> شوید و ثبت‌نام کنید.</li>
+              <li>از منو <b>Keys</b> → <b>Create Key</b> را بزنید.</li>
+              <li>کلید را کپی و همین‌جا بچسبانید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" dir="ltr">openrouter.ai/keys</a></div>
+            <div class="note">💡 مدل‌هایی که آخرشان «:free» دارد رایگان‌اند — مثل DeepSeek V3 و Llama 3.3 70B (در تب هوش مصنوعی انتخابشان کنید).</div>
+          </div></div>
+        <div class="f" style="margin:0"><b>سرویس سفارشی (در صورت نیاز) <button type="button" class="keyhint" data-kb="custom" title="راهنمای سرویس سفارشی (Ollama و مانند آن)">؟</button></b>
+          <input type="password" data-aikey="custom" placeholder="اختیاری">
+          <div class="keybox hidden" data-keybox="custom">
+            <div class="ttl">🧩 سرویس سفارشی سازگار با OpenAI</div>
+            <ol>
+              <li>هر سرویسی که رابط OpenAI دارد کار می‌کند؛ رایج‌ترین: <b>Ollama</b> (کاملاً محلی و بدون کلید).</li>
+              <li>Ollama را از لینک زیر نصب کنید و مدل بکشید (مثل <span dir="ltr">ollama pull llama3.1</span>).</li>
+              <li>در فیلد پایین این کارت، آدرس <span dir="ltr">http://127.0.0.1:11434/v1</span> و نام مدل را وارد کنید و در تب هوش مصنوعی «سرویس سفارشی» را انتخاب کنید.</li>
+            </ol>
+            <div class="lnk">🔗 <a href="https://ollama.com" target="_blank" rel="noopener" dir="ltr">ollama.com</a></div>
+            <div class="note">💡 برای Ollama محلی این فیلد کلید لازم ندارد — خالی بگذارید.</div>
+          </div></div>
+      </div></label>
+    <label class="f"><b>🛡 پروکسی فراخوانی سرویس‌های AI — مهم برای Groq / Gemini / OpenAI / Anthropic / xAI در ایران (۲.۱۳.۰) <span class="hint" data-tip="این سرویس‌ها درخواست از IP ایران را با خطای 403 رد می‌کنند؛ درخواست‌های پایتون به‌تنهایی از VPN مرورگر عبور نمی‌کنند. آدرس HTTP پروکسی VPN خود را بدهید تا همهٔ فراخوانی‌های هوش مصنوعی (فیلم‌نامه، چت، ساخت عکس، دانلود) از آن عبور کنند — مثلاً v2rayN: http://127.0.0.1:10809 · Nekoray/NekoBox پورت Mixed: http://127.0.0.1:2080 · Clash: http://127.0.0.1:7890. پورت SOCKS کار نمی‌کند (این خط از کتابخانهٔ استاندارد پایتون است). خالی = مستقیم؛ اگر System Proxy ویندوز روشن باشد خودکار از آن استفاده می‌شود. Z.ai و Pollinations به این فیلد نیازی ندارند.">؟</span></b>
+      <div class="row">
+        <input type="text" id="ai-proxy" placeholder="مثلاً http://127.0.0.1:10809 — خالی: خودکار/مستقیم" style="flex:1;direction:ltr">
+        <button type="button" class="btn sm" id="ai-test-conn" style="white-space:nowrap">🔌 تست اتصال</button>
+      </div>
+      <span class="muted small" id="ai-test-res" style="display:none"></span></label>
+    <label class="f"><b>🧩 سرویس سفارشی — سازگار با OpenAI (اختیاری) <span class="hint" data-tip="مثلاً Ollama لوکال: http://127.0.0.1:11434/v1 — یا هر سرویس دیگری که رابط OpenAI دارد. «سرویس سفارشی» را در تب هوش مصنوعی انتخاب کنید.">؟</span></b>
+      <div class="row"><input type="text" id="ai-custom-base" placeholder="آدرس (Base URL)" style="flex:1;direction:ltr"><input type="text" id="ai-custom-model" placeholder="نام مدل" style="flex:1;direction:ltr"></div></label>
+    <label class="f"><b>🐢 Pollinations — توکن تصویرساز رایگان (اختیاری) <button type="button" class="keyhint" data-kb="pollinations" title="آموزش گرفتن توکن Pollinations">؟</button></b>
+      <input type="password" data-aikey="pollinations" placeholder="اختیاری — بدون آن هم کار می‌کند (کندتر)">
+      <div class="keybox hidden" data-keybox="pollinations">
+        <div class="ttl">🐢 توکن رایگان Pollinations (برای ساخت عکس سریع‌تر و پایدارتر — ۲.۱۲.۰)</div>
+        <ol>
+          <li>بدون توکن هم کار می‌کند، ولی تیرِ رایگان محدود است: <b>۱ درخواست هم‌زمان و فاصلهٔ ~۱۵ ثانیه</b> — اگر زود پشت‌هم بسازید خطای 402 می‌گیرید.</li>
+          <li>برای سهمیهٔ بهتر (رایگان): وارد <span dir="ltr">auth.pollinations.ai</span> شوید و با گیت‌هاب ثبت‌نام کنید.</li>
+          <li>توکن (JWT) را کپی و همین‌جا بچسبانید — خودکار در درخواست‌های عکس‌سازی استفاده می‌شود.</li>
+        </ol>
+        <div class="lnk">🔗 <a href="https://auth.pollinations.ai" target="_blank" rel="noopener" dir="ltr">auth.pollinations.ai</a></div>
+        <div class="note">💡 اگر نخواستید ثبت‌نام کنید، همان حالت بدون توکن کافی است — پنل خودش بین درخواست‌ها فاصله می‌اندازد و در خطای 402 صبر و تلاش مجدد می‌کند.</div>
+      </div></label>
+  </div>
+
+  <div class="card">
+    <h3>🤖 حل کپچا</h3>
+    <div class="setrow"><span class="lbl"><b>حالت</b></span>
+      <select id="cap-mode" style="max-width:300px">
+        <option value="auto">خودکار — با سرویس حل‌کننده (نیازمند کلید)</option>
+        <option value="notify">اطلاع‌رسانی و انتظار برای حل دستی</option>
+        <option value="off">خاموش — بی‌خیال کپچا</option>
+      </select></div>
+    <div class="setrow"><span class="lbl">سرویس حل‌کننده <span class="hint" data-tip="سرویس‌های پرداختی که کپچا را برایتان حل می‌کنند. کلید API را از سایتشان بخرید و اینجا بگذارید.">؟</span></span>
+      <select id="cap-provider" style="max-width:200px"><option value="2captcha">2Captcha</option><option value="capsolver">CapSolver</option></select></div>
+    <div class="setrow"><span class="lbl">کلید API</span><input type="password" id="cap-key" placeholder="از حساب 2captcha/CapSolver" style="max-width:300px"></div>
+    <div class="setrow"><span class="lbl">مهلت حل دستی (ثانیه)</span><input type="number" id="cap-wait" style="max-width:120px"></div>
+    <p class="muted small">reCAPTCHA و hCaptcha با سرویس حل می‌شوند؛ کپچای پیامکی/OTP را باید خودتان وارد کنید — پنل لاگ‌ها را نشان می‌دهد و صبر می‌کند.</p>
+  </div>
+
+  <button class="btn primary" id="set-save" style="font-size:15px;padding:12px 26px">💾 ذخیره همهٔ تنظیمات</button>
+</section>
+
+<!-- ============ راهنما ============ -->
+<section id="tab-help" class="tab">
+  <h2>📖 راهنمای کامل ParsAgent</h2>
+
+  <div class="card">
+    <details open>
+      <summary>🏠 این سایت چیست؟</summary>
+      <p>این پنل، فرمان‌دهی نرم‌افزار <b>ParsAgent</b> روی سیستم شماست. همه‌چیز <b>روی همان سرور محلی</b> اجرا می‌شود و هیچ داده‌ای به بیرون فرستاده نمی‌شود. شما از اینجا به ۸ پلتفرم (اینستاگرام، توییتر، تلگرام، واتساپ، فیسبوک، لینکدین، بله، روبیکا) دستور می‌دهید تا کارهای تکراری را برایتان انجام دهند.</p>
+    </details>
+    <details>
+      <summary>🚀 شروع سریع</summary>
+      <p>۱) برنامهٔ <kbd>launcher.py</kbd> را اجرا کنید و «اجرای سرور و باز کردن پنل» را بزنید.<br>
+      ۲) در تب <b>پلتفرم‌ها</b> روی «ورود» بزنید تا مرورگر با پروفایل دائمی باز شود.<br>
+      ۳) نام کاربری/رمز (یا شماره تلفن) را در <b>تنظیمات ← ورود خودکار</b> ذخیره کنید؛ دکمهٔ «ورود» خودش فرم را پر و ارسال می‌کند (کپچا و کد تأیید را خودتان وارد کنید). از دفعهٔ بعد پروفایل به یاد دارد.<br>
+      ۴) از <b>اجرای سریع</b> برای کارهای فوری و از <b>زمان‌بندی</b> برای کارهای خودکار استفاده کنید.</p>
+    </details>
+    <details>
+      <summary>💾 نصب آفلاین بدون اینترنت (جدید ۲.۵.۰)</summary>
+      <p>می‌خواهید ParsAgent را به سیستمی ببرید که <b>اینترنت ندارد</b> (یا پایتونِ آن پشت فیلتر است)؟ فقط با لانچر:</p>
+      <ul>
+        <li><b>روی سیستم اینترنت‌دار:</b> دکمهٔ «💾 ساخت بستهٔ آفلاین» را بزنید — همهٔ پیش‌نیازها به‌صورت wheel آماده و (اگر تیک خورده باشد) مرورگر کرومیوم، داخل پوشهٔ <kbd>offline_bundle</kbd> در همین پروژه ذخیره می‌شوند.</li>
+        <li><b>انتقال:</b> کل پوشهٔ پروژه را با فلش/هارد به سیستم مقصد کپی کنید.</li>
+        <li><b>روی سیستم بدون اینترنت:</b> دکمهٔ «📀 نصب آفلاین» را بزنید (یا <kbd>python launcher.py --install-offline</kbd>) — نصب کامل بدون حتی یک بایت دانلود.</li>
+      </ul>
+      <p>💡 اگر موقع اجرای لانچر ماژولی نصب نباشد و بستهٔ آفلاین کنار پروژه باشد، خودکار پیشنهاد نصبِ بدون اینترنت داده می‌شود.<br>
+      ⚠️ <b>نکتهٔ مهم:</b> بسته را روی همان نسخهٔ پایتونِ «استاندارد» بسازید که روی سیستم مقصد نصب است (مثلاً هر دو 3.13). نصاب موقع نصب، نسخهٔ پایتون، ۳۲/۶۴ بیتی و پایتونِ free-threaded (شناسه‌ای مثل cp313t — همان که خطای عجیب کامپایلر Rust می‌دهد) را چک می‌کند و اگر ناسازگاری باشد، با پیام فارسی واضح جلوی نصب را می‌گیرد.</p>
+    </details>
+    <details>
+      <summary>🐍 نصب روی سیستم خام / خطای کامپایل Rust (جدید ۲.۸.۰)</summary>
+      <p>روی یک سیستم تازه، اگر نصب پیش‌نیازها با خطاهایی مثل <kbd>maturin failed</kbd>، <kbd>linker link.exe not found</kbd> یا <kbd>Microsoft Visual C++ 14.0 or greater is required</kbd> تمام شد، یعنی پایتونِ سیستم <b>free-threaded</b> است (فایلی مثل <kbd>python3.13t.exe</kbd>) که برایش wheel آماده وجود ندارد و pip شروع به کامپایل سورس می‌کند — لانچر ۲.۸.۰ این را کامل خودکار حل می‌کند:</p>
+      <ul>
+        <li><b>تعویض خودکار:</b> اگر لانچر با پایتون t باز شود، همان لحظه پایتونِ استانداردِ سیستم را پیدا می‌کند و با آن ادامه می‌دهد (پیام «پایتون free-threaded شناسایی شد؛ ادامه با پایتون استاندارد»).</li>
+        <li><b>نصب خودکار:</b> اگر سیستم هیچ پایتون استانداردی نداشت، دکمهٔ «🐍 پایتون استاندارد» نسخهٔ ۳.۱۲ را از python.org (~۲۶ مگابایت، بدون ادمین) دانلود و خاموش نصب می‌کند و لانچر خودش با آن بازگشایی می‌شود.</li>
+        <li><b>نصب فقط wheel:</b> نصب اینترنتی دیگر هرگز سورس کامپایل نمی‌کند (<kbd>--only-binary</kbd>) و اگر ایندکس پیش‌فرض جواب نداد، خودکار با آینه‌های جایگزین (Tsinghua / Aliyun — بدون فیلترشکن) دوباره تلاش می‌کند.</li>
+        <li>معادل کنسلی: <kbd>python launcher.py --install-python</kbd></li>
+      </ul>
+      <p>💡 دابل‌کلیک روی <kbd>ParsAgent.bat</kbd> هم حالا اول از <kbd>py</kbd> استفاده می‌کند که هرگز نسخهٔ t را انتخاب نمی‌کند.</p>
+    </details>
+    <details>
+      <summary>🌍 اینستاگرام/توییتر/فیسبوک/لینکدین/واتساپ باز نمی‌شود؟ (راهنمای پروکسی — مهم برای ایران)</summary>
+      <p>این سایت‌ها <b>اتصال از IP ایران را نمی‌پذیرند</b> (تحریم — واتساپ هم از ۲۰۲۲ در ایران فیلتر است). اگر خطایی مثل
+      <kbd>net::ERR_CONNECTION_CLOSED</kbd> یا <kbd>net::ERR_TIMED_OUT</kbd> دیدید، یعنی همین موضوع است — مشکل از برنامه نیست.</p>
+      <ul>
+        <li><b>راه ۱ — VPN سیستم (ساده‌ترین):</b> VPN خود (مثل v2rayN/Nekoray) را روشن و حالت «System Proxy» را فعال کنید؛ پارس‌ایجنت پروکسی سیستم را <b>خودکار</b> می‌خواند و روی مرورگرش اعمال می‌کند (در لاگ: «🔄 پروکسی سیستم ویندوز پیدا و اعمال شد»).</li>
+        <li><b>راه ۲ — پروکسی دستی:</b> در <b>تنظیمات ← عمومی ← پروکسی</b> آدرس را وارد کنید؛ مثلاً v2rayN: <kbd>http://127.0.0.1:10809</kbd> یا <kbd>socks5://127.0.0.1:10808</kbd>.</li>
+        <li><b>تست:</b> بعد از تنظیم، در تب پلتفرم‌ها دکمهٔ «باز کردن» را بزنید؛ اگر باز شد یعنی درست است.</li>
+      </ul>
+      <p>💡 وقتی پروکسی فعال است، بهتر است «شیلد WebRTC» را هم در تنظیمات روشن کنید تا IP اصلی از راه WebRTC لو نرود (فقط اگر تماس صوتی/تصویری تلگرام/بله/روبیکا لازم ندارید). پیام‌رسان‌های ایرانی و سایت‌های داخلی پروکسی لازم ندارند.</p>
+    </details>
+    <details>
+      <summary>🔑 ورود خودکار چطور کار می‌کند؟ (۲.۷.۰)</summary>
+      <p>اطلاعات هر پلتفرم را در <b>تنظیمات ← ورود خودکار</b> ذخیره کنید (فقط روی همین سیستم ذخیره می‌شود). بعد با دکمهٔ «ورود»:</p>
+      <ul>
+        <li><b>اینستاگرام/فیسبوک/لینکدین:</b> بنر کوکی بسته می‌شود، نام کاربری و رمز با تایپ انسانی پر و دکمهٔ ورود کلیک می‌شود؛ اگر سایت <b>کد تأیید (OTP)</b> یا <b>کپچا</b> بخواهد، در همان پنجره واردش کنید — برنامه پیامش را می‌دهد.</li>
+        <li><b>توییتر/X:</b> فلو دومرحله‌ای است — یوزرنیم → «بعدی» → رمز → «ورود»؛ اگر X «بررسی هویت» بخواهد، همان‌جا دستی کامل کنید.</li>
+        <li><b>تلگرام/بله/روبیکا:</b> شماره تلفن تایپ و تأیید می‌شود؛ کد پیامکی را فقط خودتان می‌توانید وارد کنید.</li>
+        <li><b>واتساپ (۲.۱۱.۰):</b> نه نام کاربری دارد نه رمز — دکمهٔ «ورود» صفحهٔ QR را باز می‌کند، راهنمای فارسی می‌دهد و <b>تا ۳ دقیقه منتظر می‌ماند</b> تا با گوشی اسکن کنید (واتساپ ← تنظیمات ← دستگاه‌های متصل ← اتصال دستگاه). بعد از اولین ورود، سشن ذخیره می‌شود و دفعات بعد اسکن لازم نیست. اگر از قبل وارد باشید، خودش می‌فهمد.</li>
+        <li>اگر از قبل وارد شده باشید، برنامه می‌فهمد و می‌گوید «نیازی به ورود دوباره نیست».</li>
+      </ul>
+      <p>⚠️ اگر صفحه دیر باز می‌شود، برنامه تا ۳۵ ثانیه برای فیلد صبر می‌کند. از ۲.۹.۰ پیدا کردن فیلد کاملاً بازنویسی شده: همهٔ نسخه‌های هر سلکتور چک می‌شوند (نه فقط اولی)، سلکتورهای <b>فارسی و انگلیسی</b> پشتیبانی می‌شوند (چون زبان مرورگر fa-IR است و سایت‌ها لیبل فارسی می‌دهند) و آخرین راه همیشه «اولین فیلد متنیِ مرئی داخل فرم» است. اگر باز هم «فیلد ورود دیده نشد» گفت، اول راهنمای پروکسی بالا را چک کنید (یعنی صفحه اصلاً باز نشده)؛ فهرست فیلدهای موجود در صفحه هم در تب «لاگ‌ها» ثبت می‌شود.</p>
+    </details>
+    <details>
+      <summary>❤ لایک چطور کار می‌کند؟ چرا قبلاً کار نمی‌کرد؟ (جدید ۲.۱۰.۰)</summary>
+      <p>موتور لایک برای هر ۴ پلتفرم (اینستاگرام، توییتر/X، فیسبوک، لینکدین) از نو نوشته شد. قبل از این نسخه سه مشکل واقعی وجود داشت:</p>
+      <ul>
+        <li><b>چک ورود نمی‌شد:</b> اگر وارد پلتفرم نبودید، فیدی وجود نداشت و نتیجه فقط «لایک انجام شد: ۰» بود — حالا اول پیام واضح می‌دهد و به دکمهٔ «ورود» راهنمایی می‌کند.</li>
+        <li><b>در کل صفحه جست‌وجو می‌شد:</b> دکمه‌ای که «Like» داشت — هرجا بود — کلیک می‌شد؛ یعنی گاهی لایکِ کامنت یا دکمه‌های جانبی به‌جای پست اصلی. حالا دکمه فقط <b>داخل همان پست</b> جست‌وجو می‌شود.</li>
+        <li><b>سلکتور «شامل Like» بود:</b> دکمهٔ «Liked» (پستِ قبلاً لایک‌شده!) را هم می‌گرفت — یعنی بعضی وقت‌ها لایکِ شما را <b>برداشتن</b> می‌کرد! حالا فقط دکمهٔ دقیقِ «Like/پسندیدن» (لایک‌نشده) گرفته می‌شود.</li>
+      </ul>
+      <p>چه چیزهایی اضافه شد: صبر برای بارگیری فید (تا ۲۵ ثانیه)، سلکتورهای <b>فارسی و انگلیسی</b> (چون زبان مرورگر fa-IR است و دکمه‌ها «پسندیدن» هستند)، <b>تأیید بعد از کلیک</b> (اگر دکمه به «برداشتن پسند/Unlike» تغییر کند در لاگ ✓ می‌گیرد)، اسکرول تدریجی برای پست‌های بعدی و پرش از پست‌های لایک‌شده.</p>
+      <p>💡 اگر پیام «هیچ پستِ لایک‌نشدنی پیدا نشد» گرفتید یعنی همهٔ پست‌های فعلی فید از قبل لایک شده‌اند — کمی بعد یا با تعداد کمتر دوباره تلاش کنید.</p>
+    </details>
+    <details>
+      <summary>📸 استوری از کدام پلتفرم‌ها و با کدام نسخه (وب/اپ) ممکن است؟ (جدید ۲.۱۰.۰)</summary>
+      <p>بررسی کردیم کدام سرویس‌ها اجازهٔ گذاشتن استوری از <b>نسخهٔ وب (مرورگر)</b> را می‌دهند؛ اکشن «انتشار استوری» فقط برای آن‌ها باقی مانده است:</p>
+      <ul>
+        <li>✅ <b>فیسبوک:</b> از نسخهٔ وب می‌شود استوری <b>عکس</b> گذاشت — اکشن «انتشار استوری (عکس)» برایش اضافه شد. ویدیو فقط از اپ فیسبوک ممکن است.</li>
+        <li>❌ <b>اینستاگرام:</b> اجازهٔ انتشار استوری از نسخهٔ وب را <b>نمی‌دهد</b> (فقط اپ موبایل؛ اکانت‌های تجاری می‌توانند از Meta Business Suite). به همین دلیل اکشن استوری از اینستاگرام <b>حذف شد</b> — پست عکس از وب همچنان کار می‌کند.</li>
+        <li>❌ <b>توییتر/X:</b> اصلاً استوری ندارد (Fleets از ۲۰۲۱ حذف شد).</li>
+        <li>❌ <b>لینکدین:</b> استوریها را از سپتامبر ۲۰۲۱ حذف کرد.</li>
+        <li>❌ <b>تلگرام:</b> استوری فقط برای اکانت‌های پریمیوم و فقط از اپ موبایل — نسخهٔ وب آن را پشتیبانی نمی‌کند.</li>
+        <li>❌ <b>بله / روبیکا:</b> نسخهٔ وبشان استوری ندارد — از اپ.</li>
+        <li>❌ <b>واتساپ:</b> استوری (Status) فقط از اپ موبایل گذاشته می‌شود؛ نسخهٔ وب فقط <b>نمایش</b> می‌دهد.</li>
+      </ul>
+      <p>💡 برای استوری اینستاگرام/تلگرام، از خود اپ موبایلتان استفاده کنید؛ برای اتوماسیون، پخش ماکرو در ساعت دلخواه هم می‌تواند یادآوری باشد.</p>
+    </details>
+    <details>
+      <summary>🟢 واتساپ وب چطور کار می‌کند؟ (جدید ۲.۱۱.۰)</summary>
+      <p><b>ورود — فقط با اسکن QR:</b> واتساپ (مثل خود واتساپ دسکتاپ) اسم و رمز ندارد؛ هویت شما گوشی‌تان است. دکمهٔ «ورود» صفحهٔ واتساپ وب را باز می‌کند، شما با گوشی می‌روید <b>واتساپ ← تنظیمات ← دستگاه‌های متصل ← اتصال دستگاه</b> و کد QR داخل پنجرهٔ باز‌شده را اسکن می‌کنید؛ پنل تا ۳ دقیقه صبر می‌کند و به‌محض اسکن می‌فهمد و پیام موفقیت می‌دهد. سشن در پروفایل مرورگر ذخیره می‌شود — دفعات بعد بدون اسکن وارد می‌شوید.</p>
+      <ul>
+        <li><b>ارسال پیام:</b> نام مخاطب/گروه را (دقیقاً همان‌طور که در واتساپ شما ذخیره شده) در پارامتر بگذارید؛ برنامه جستجو می‌کند، اولین نتیجه را باز می‌کند، متن را با تایپ انسانی می‌نویسد و Enter می‌زند. برای چند گیرنده، نام‌ها را با ویرگول جدا کنید — بین هر گیرنده فاصلهٔ انسانی (۸ تا ۱۵ ثانیه) می‌افتد.</li>
+        <li><b>چرا نام باید ذخیره باشد؟</b> واتساپ وب فقط چت‌های موجود/گروه‌های شما را جستجو می‌کند — مثل وقتی خودتان دستی جستجو می‌کنید. شمارهٔ ناشناس را اول در گوشی به مخاطبین اضافه کنید.</li>
+        <li><b>ریسک‌ها — جدی بخوانید:</b> واتساپ سخت‌گیرترین پیام‌رسان نسبت به اسپم است. فقط به مخاطبینی پیام بدهید که شمارهٔ شما را دارند؛ پیام انبوه به ناشناس‌ها = گزارش اسپم و بن سریع. گروه‌های خودتان (مشتریان/همکاران) مطمئن‌ترین‌اند.</li>
+        <li><b>ایران:</b> واتساپ وب هم مثل اینستاگرام از IP ایران باز نمی‌شود — راهنمای پروکسی بالا برایش هم لازم است (VPN سیستم یا پروکسی دستی).</li>
+      </ul>
+    </details>
+    <details>
+      <summary>🌐 معنی «باز» و «بسته» بودن پلتفرم چیست؟</summary>
+      <p>هر پلتفرم یک <b>نشست مرورگر مستقل با پروفایل خودش</b> دارد (پوشه‌های <kbd>profiles/instagram</kbd> و ...). وضعیت هر کارت یعنی:</p>
+      <ul>
+        <li><b>🟢 باز</b> — پنجرهٔ مرورگر آن پلتفرم همین حالا فعال است؛ دستورها فوراً و بدون تأخیر اجرا می‌شوند. با دکمهٔ «باز کردن» یا اولین دستورِ هر تب دیگر باز می‌شود.</li>
+        <li><b>⚪ بسته</b> — نشست فعالی ندارد؛ اولین دستور چند ثانیه‌ای مرورگر را با همان پروفایل باز می‌کند. با دکمهٔ «بستن» هم بسته می‌شود.</li>
+      </ul>
+      <p>مهم: <b>حتی وقتی بسته است</b>، لاگین‌ها، کوکی‌ها و اثر انگشت پایدار آن پلتفرم در پروفایل ذخیره‌مانده‌اند؛ باز شدن دوباره مثل «برگشتن همان کاربر قبلی» است، نه یک کاربر جدید.</p>
+    </details>
+    <details>
+      <summary>🧪 دکمهٔ «تست بات» چه کار می‌کند؟</summary>
+      <p>تست بات یک مرورگر با همان پروفایل پلتفرم انتخابی باز می‌کند و <b>ردپای ربات بودن</b> را می‌سنجد:</p>
+      <ul>
+        <li><b>راه‌اندازی مرورگر</b> — آیا اصلاً مرورگر با پروفایل دائمی باز می‌شود؟</li>
+        <li><b>navigator.webdriver</b> — مهم‌ترین نشانهٔ ربات. باید «undefined / false» باشد.</li>
+        <li><b>زبان‌های مرورگر</b> — باید شامل fa-IR باشد.</li>
+        <li><b>پلاگین‌ها</b> — مرورگر معمولی ۵ پلاگین PDF دارد؛ ربات خالی.</li>
+        <li><b>window.chrome کامل</b> — نبود یا ناقص بودنش نشانهٔ اتوماسیون است.</li>
+        <li><b>WebGL</b> — باید یکی از رندررهای واقع‌نمای ANGLE (اینتل/انویدیا/AMD) باشد، نه مدل واقعی شما.</li>
+        <li><b>نویز پایدار Canvas</b> — دو بار خواندن باید <u>یکسان</u> باشد؛ تغییر هر بار یعنی نویز نادرست.</li>
+        <li><b>AudioContext</b> — اثر انگشت صدا هم باید بدون خطا کار کند.</li>
+        <li><b>ماسک فونت</b> — فونت رایج «دارد»، فونت ساختگی «ندارد».</li>
+        <li><b>سخت‌افزار واقع‌نما</b> — تعداد هسته/رم از استخر واقعی و برای هر پروفایل ثابت.</li>
+        <li><b>toString</b> — توابع وصله‌شده باید native به نظر برسند.</li>
+        <li><b>UA بدون Headless</b> — اگر حالت بدون رابط روشن باشد، در UA می‌ماند و شناسایی می‌شوید.</li>
+        <li><b>تایپ/فاصله/موس</b> — تنظیمات رفتار انسانی فعال است یا نه.</li>
+      </ul>
+      <p>اگر همه ✅ بودند، احتمال شناسایی به‌عنوان بات خیلی کم است. اگر موردی ❌ بود، توضیح همان ردیف می‌گوید چه تنظیمی را درست کنید.</p>
+    </details>
+    <details>
+      <summary>⚙ توضیح تک‌تک گزینه‌های تنظیمات</summary>
+      <p><b>عمومی:</b></p>
+      <ul>
+        <li><b>headless</b> — مرورگر بدون پنجره اجرا شود. برای ورود و کارهای حساس <u>خاموش</u> بماند.</li>
+        <li><b>مرورگر ترجیحی</b> — auto یعنی اول Edge بعد Chrome بعد Chromium. مرورگر واقعی، کمتر شناسایی می‌شود.</li>
+        <li><b>پروکسی</b> — اگر آی‌پی مشخصی می‌خواهید؛ خالی یعنی اتصال مستقیم.</li>
+      </ul>
+      <p><b>ضد شناسایی بات — پیشرفته (۴ گروه و ۱۹ ماژول):</b> کلید اصلی ضد شناسایی است؛ فلسفه‌اش «متد روز دنیا» یعنی <b>اثر انگشت پایدار + هویت کامل + رفتار انسانی</b>:</p>
+      <ul>
+        <li><b>🪪 گروه ۱ — هویت مرورگر:</b> مخفی‌کردن <u>navigator.webdriver</u> (مهم‌ترین نشانهٔ ربات)، زبان‌های فارسی، ۵ پلاگین PDF واقعی، <u>window.chrome کامل</u> (runtime/app/loadTimes — مرورگر واقعی همیشه دارد)، تعمیر Permissions، حذف Headless از UA. «جعل UA دلخواه» پیش‌فرض خاموش است چون با مرورگر واقعی (Edge/Chrome) UA خودِ مرورگر واقعی است و جعلِ بد فقط تناقض می‌سازد.</li>
+        <li><b>🧬 گروه ۲ — اثر انگشت پایدار:</b> هر پروفایل یک seed دائمی دارد (فایل <kbd>profiles/.../.fpseed</kbd>) و از روی آن: کارت گرافیک از استخر رندررهای واقعی ANGLE، تعداد هستهٔ CPU و رم، جابجایی نویز Canvas و نویز صدا تعیین می‌شود — و <u>بین اجراها ثابت می‌ماند</u>. چرا؟ چون نویزی که هر بار عوض شود توسط CreepJS و سیستم‌های نسل‌جدود فوراً «تقلب» تشخیص داده می‌شود؛ هدف این است که شما یک «انسانِ همیشگی با یک سیستم مشخص» باشید. ماسک فونت هم فونت‌های رایج ویندوز را «دارد» و فونت ساختگی را «ندارد» جواب می‌دهد. شیلد WebRTC فقط در صورت نیاز (خطر خرابی تماس‌ها).</li>
+        <li><b>🧠 گروه ۳ — رفتار انسانی:</b> تایپ حرف‌به‌حرف با ۴ سرعت (تند/انسانی/کند/فوری) و مکث‌های «فکر کردن»، <u>مسیر منحنی موس</u> (موس ربات خط راست می‌رود!)، اسکرول تصادفی بعد از باز شدن صفحه، فاصلهٔ تصادفی بین اکشن‌ها، مکث کوتاه پس از هر کار، و <u>مکث شبانه</u> (۱ تا ۷ بامداد زمان‌بندی‌ها اجرا نمی‌شوند).</li>
+        <li><b>🧩 گروه ۴ — هر پلتفرم:</b> می‌توانید کل ضد شناسایی را برای یک پلتفرم خاص موقتاً خاموش کنید (مثلاً برای عیب‌یابی).</li>
+      </ul>
+      <p>سه <b>سطح سریع</b>: پایه (ضروری‌ها — سریع‌ترین)، استاندارد (توصیه‌شده) و حداکثر (همه‌چیز + تایپ کندتر). بعد از اعمال، هر ماژول جداگانه قابل تغییر است. تغییرات از <b>نشست‌های تازه</b> اعمال می‌شوند — برای اعمال کامل، پلتفرم را ببندید و دوباره باز کنید.</p>
+      <p><b>ورود خودکار:</b> نام کاربری/رمز هر پلتفرم را یک‌بار وارد کنید؛ دکمهٔ «ورود» در پلتفرم‌ها آن‌ها را در فرم ورود تایپ می‌کند. برای تلگرام/بله/روبیکا، «نام کاربری» یعنی شماره تلفن. واتساپ اسم/رمز ندارد — با اسکن QR وارد می‌شود (راهنمای کامل در تب «راهنما»). اطلاعات فقط در فایل محلی <kbd>config/credentials.json</kbd> ذخیره می‌شود. رمز خالی = بدون تغییر؛ دکمهٔ «پاک کردن» رمز را حذف می‌کند.</p>
+      <p><b>حل کپچا:</b> حالت «خودکار» برای reCAPTCHA/hCaptcha با سرویس‌هایی مثل 2Captcha یا CapSolver کار می‌کند — باید از سایتشان شارژ و کلید API بگیرید و اینجا بگذارید. حالت «اطلاع‌رسانی» یعنی پنل توی لاگ هشدار می‌دهد و تا زمانی که خودتان حل کنید صبر می‌کند (سقف: مهلت حل دستی). کپچای پیامکی را هیچ نرم‌افزاری نمی‌تواند حل کند؛ آن را خودتان وارد کنید.</p>
+    </details>
+    <details>
+      <summary>⚡ اجرای سریع — نحوهٔ استفاده</summary>
+      <p>۱) پلتفرم را انتخاب کنید، ۲) اکشن را انتخاب کنید، ۳) پارامترها را پر کنید (مثلاً نام کاربر و تعداد)، ۴) «اجرا» را بزنید. نتیجه بلافاصله زیر دکمه و در لاگ داشبورد ظاهر می‌شود.<br>
+      برای <b>فالو چند نفر</b>: در فیلد هدف، چند نام کاربری را با ویرگول بگذارید یا <kbd>hashtag:عکاسی</kbd> بنویسید تا از همان هشتگ، به تعداد خواسته‌شده فالو کند.<br>
+      برای <b>پست/استوری/توییت عکس</b>: کنار فیلد فایل، دکمهٔ «⬆ آپلود» را بزنید و عکس را از سیستم انتخاب کنید؛ بعد از بارگذاری خودکار انتخاب می‌شود.</p>
+    </details>
+    <details>
+      <summary>⏰ زمان‌بندی — مثل انسان کار کنید!</summary>
+      <p>دو نوع وظیفه دارید: <b>⚡ اکشن پلتفرم</b> (فالو، لایک، پست و ...) و <b>🎬 پخش ماکرو</b> (هر ماکروی ذخیره‌شده، خودکار تکرار می‌شود). سه نوع زمان‌بندی:</p>
+      <ul>
+        <li><b>تکرارشونده</b> — «فالو ۵ نفر هر ۳۰ دقیقه یک‌بار». جیتر (±) یعنی هر بار کمی زودتر/دیرتر شود تا الگوی ثابت رباتیک نسازد.</li>
+        <li><b>روزانه</b> — ساعت‌های مشخص روز (مثلاً ۱۰، ۱۴ و ۲۱) — برای پست و استوری عالی است.</li>
+        <li><b>یک‌بار</b> — تاریخ و ساعت مشخص.</li>
+      </ul>
+      <p><b>فاصلهٔ زیر-اکشن‌ها:</b> وقتی یک کار چندتایی است (فالو ۵ نفر)، بین هر مورد این فاصلهٔ تصادفی رعایت می‌شود. دکمهٔ «🛡 پیشنهاد ایمن» بر اساس راهنمای همان پلتفرم، اعداد مطمئن را پر می‌کند — استفاده کنید!</p>
+      <p>مهم‌ترین اصل: <b>هرگز سقف‌های روزانه را کامل مصرف نکنید</b> و شب‌ها (۲ تا ۷ صبح) فعالیت نگذارید. جدول محدودیت‌های هر پلتفرم، کنار فرم زمان‌بندی هست.</p>
+    </details>
+    <details>
+      <summary>🖼 رسانه‌ها</summary>
+      <p>عکس‌ها و ویدیوهایتان را اینجا از سیستم بارگذاری کنید. هر اکشنی که «فایل رسانه» بخواهد (پست، استوری، توییت) می‌تواند از همین کتابخانه انتخاب کند. فایل‌ها در پوشهٔ <kbd>media</kbd> پروژه ذخیره می‌شوند و قابل حذف‌اند.</p>
+    </details>
+    <details>
+      <summary>🎬 ضبط ماکرو</summary>
+      <p>پلتفرم را انتخاب و «شروع ضبط» را بزنید. از آن لحظه، <b>کلیک‌ها، متن‌های تایپ‌شده (حتی در جعبه‌های چت اینستاگرام/واتساپ/تلگرام) و کلید Enter</b> در پنجرهٔ مرورگرِ همان شبکه ضبط می‌شوند. «توقف و ذخیره» ماکرو را با نام دلخواه ذخیره می‌کند و <b>پلتفرمِ لحظهٔ ضبط را هم یادش می‌ماند (۲.۱۵.۰)</b> — در لیست پایین همان را نشان می‌دهد و هنگام پخش هم انتخاب نمی‌خواهد.<br>
+      ضبط <b>هرگز خودکار شروع نمی‌شود</b> — حتی وقتی سرور بالا می‌آید. فقط همین دکمه.<br>
+      <b>فقط همان پنجرهٔ مرورگرِ شبکهٔ اجتماعی (۲.۱۴.۰):</b> کلیک روی پنل ParsAgent (مثل دکمهٔ «توقف و ذخیره») و کارهایی که در سایت‌ها/تب‌های دیگر انجام می‌دهید <b>اصلاً ضبط نمی‌شوند</b> — رویدادهای خارج از دامنهٔ همان شبکه نادیده گرفته و شمارشان به شما گفته می‌شود.<br>
+      <b>پخش (۲.۱۵.۰):</b> با «▶ اجرا»، مرورگر <b>صفحهٔ اصلی همان پلتفرم</b> را باز می‌کند و بعد ماکرو اجرا می‌شود (قبلاً صفحهٔ خالی می‌ماند و سایت باز نمی‌شد)؛ در پایان یا با <b>دکمهٔ «⏹ توقف پخش»</b>، <b>پنجرهٔ مرورگرِ همان پلتفرم خودکار بسته می‌شود</b>. اگر خودتان هم مرورگر را دستی بسته باشید، پخش بعدی دیگر خطا نمی‌دهد — دوباره باز می‌کند. برای هر رخداد، تبِ درست پیدا می‌شود، عنصرها در فریم‌های فرعی (iframe) هم جستجو می‌شوند و اگر رخدادی اجرا نشود، دلیلش اعلام می‌شود.<br>
+      <b>زمان‌بندی پخش:</b> کنار هر ماکرو دکمهٔ «📅 زمان‌بندی» هست؛ پلتفرم را هم خودش از فایل ماکرو می‌خواند؛ پخش تکرارشونده (هر چند دقیقه با جیتر)، روزانه (ساعت‌های مشخص) یا یک‌بار اجرا می‌شود — دقیقاً مثل اکشن‌ها، با مکث شبانهٔ خودکار.<br>
+      محدودیت: ماکرو روی همان پلتفرم و صفحهٔ مشابه جواب می‌دهد؛ اگر سایت ظاهرش را عوض کند، ماکرو را دوباره ضبط کنید.</p>
+    </details>
+    <details>
+      <summary>🧠 تب هوش مصنوعی — ایجنت خودمختار چطور کار می‌کند؟</summary>
+      <p><b>یک ایجنت کاملاً خودمختار</b>: شما فقط ایده یا ماموریت را فارسی می‌گویید (مثل: «این ۷ ایده را این هفته بگیر، برای هر کدام ۳ پست بساز، در تلگرام و توییتر منتشر کن و آخر هفته گزارش بده»). ایجنت:</p>
+      <ul>
+        <li><b>۱) برنامه‌ریزی می‌کند</b> — با مدل انتخابی، ماموریت را به گام‌های اجرایی تبدیل می‌کند (تولید محتوا ← زمان‌بندی ← استراتژی فالو ← گزارش).</li>
+        <li><b>۲) محتوا تولید می‌کند</b> — برای هر پلتفرم با قوانین خودش (توییتر ۲۸۰ نویسه، اینستاگرام ۸-۱۲ هشتگ و …).</li>
+        <li><b>۳) زمان‌بندی می‌کند</b> — پست‌ها را در صف انتشار با پراکندگی منطقی می‌گذارد؛ سقف روزانه را نقض نمی‌کند. برای اینستاگرام/فیسبوک از کتابخانهٔ «رسانه‌ها» عکس می‌گذارد؛ برای پیام‌رسان‌ها نام کانال لازم است.</li>
+        <li><b>۴) استراتژی فالو تصمیم می‌گیرد</b> — چند نفر در روز (در سقف امن همان پلتفرم)، از چه هشتگی و در چه ساعاتی — و آن را به زمان‌بندی روزانه تبدیل می‌کند.</li>
+        <li><b>۵) گزارش می‌دهد</b> — فوری یا در زمان مقرر («آخر هفته گزارش بده»)؛ با آمار و جمع‌بندی فارسی.</li>
+      </ul>
+      <p><b>سطوح خودمختاری:</b> «پیشنهادی» (برنامه را تأیید می‌کنید بعد اجرا می‌شود)، «نیمه‌خودکار» (همه‌چیز خودکار، فقط انتشار فوری تأیید می‌خواهد) و «کاملاً خودمختار».</p>
+      <p><b>سرویس‌ها:</b> Z.ai (GLM) — پیشنهاد ما، دو مدل Flash رایگان · OpenAI · Anthropic Claude · Google Gemini · xAI Grok (گروک — ۲.۱۳.۰) · Groq (رایگان) · DeepSeek · OpenRouter (ده‌ها مدل رایگان/پولی) · سرویس سفارشی سازگار با OpenAI (مثل Ollama لوکال). کلیدها را از تب <b>تنظیمات ← هوش مصنوعی</b> وارد کنید — زیر هر فیلد کلید، دکمهٔ <b>«؟»</b> آموزش گام‌به‌گام گرفتن کلید و لینک مستقیم آن سرویس را باز می‌کند. <b>از ۲.۱۳.۰ دکمهٔ «🔌 تست اتصال» کنار فیلد «پروکسی فراخوانی سرویس‌ها» هم هست</b> — سرویس انتخابی را با یک پیام فارسی وصل/غیروصل آزمایش می‌کند.</p>
+      <p><b>🛡 خطای 403 و پروکسی سرویس‌ها (۲.۱۳.۰ — مهم برای ایران):</b> سرویس‌هایی مثل Groq، Gemini، OpenAI، Anthropic و xAI درخواست از IP ایران را با خطای 403 «Forbidden» (یا صفحهٔ HTML گوگل) رد می‌کنند — و درخواست‌های پایتونِ پنل به‌تنهایی از VPN مرورگرتان عبور نمی‌کنند. راه حل: در <b>تنظیمات ← هوش مصنوعی ← «پروکسی فراخوانی سرویس‌ها»</b> آدرس HTTP پروکسی VPN خود را بدهید (v2rayN: <span dir="ltr">http://127.0.0.1:10809</span> · Nekoray/NekoBox پورت Mixed: <span dir="ltr">http://127.0.0.1:2080</span> · Clash: <span dir="ltr">http://127.0.0.1:7890</span>) — همهٔ فراخوانی‌ها (فیلم‌نامه، چت، عکس، دانلود) از آن عبور می‌کنند؛ پورت SOCKS کار نمی‌کند. اگر فیلد را خالی بگذارید: اگر «System Proxy» ویندوز روشن باشد خودکار از همان استفاده می‌شود (از ۲.۱۳.۰ با رفع باگ آدرس https). <b>Z.ai و Pollinations از ایران مستقیم کار می‌کنند</b> و به این فیلد نیازی ندارند.</p>
+      <p>💡 نکته: محتوای ماموریت فقط به سرویس AI انتخابی خودتان می‌رود و انتخاب سرویس/مدل هر لحظه قابل تغییر است. ماموریت‌ها در <span dir="ltr">config/missions.json</span> ذخیره می‌شوند و با ری‌استارت سرور، نیمه‌تمام‌ها «متوقف» می‌شوند تا با دکمهٔ «ادامه» از همان‌جا بروند.</p>
+    </details>
+    <details>
+      <summary>🎬 چاپخانهٔ ویدیو و 🎨 ساخت عکس با AI (جدید ۲.۴.۰)</summary>
+      <p><b>چاپخانهٔ ویدیو</b> — الهام‌گرفته از پروژهٔ متن‌باز معروف چینی <b>MoneyPrinterTurbo</b> (github.com/harry0703/MoneyPrinterTurbo — «با AI با یک کلیک ویدیوی کوتاه بساز»):</p>
+      <ul>
+        <li><b>۱) موضوع می‌دهید</b> (فارسی یا هر زبان) و طول تقریبی ویدیو را مشخص می‌کنید.</li>
+        <li><b>۲) فیلم‌نامه</b> — مدل زبانی انتخابی شما صحنه‌به‌صحنه ماجرای گویندگی + توضیح عکس هر صحنه را می‌نویسد.</li>
+        <li><b>۳) گویندگی رایگان</b> — با <span dir="ltr">edge-tts</span> مایکروسافت؛ صداهای فارسی «فرید» و «دلارا» طبیعی‌اند. اگر کتابخانه نصب نباشد، خود پنل <b>خودکار نصبش می‌کند</b> (از ۲.۱۲.۰ — دیگر لازم نیست دستی چیزی نصب کنید؛ لانچر هم موقع «نصب پیش‌نیازها» آن را می‌آورد).</li>
+        <li><b>۴) تصویر هر صحنه</b> — با تصویرساز انتخابی (Z.ai GLM-Image / DALL·E 3)؛ و اگر کلید نداشته باشید، خودکار <b>Pollinations رایگانِ محدود</b> می‌سازد (۱ درخواست هم‌زمان — بین صحنه‌ها خودش فاصله می‌اندازد تا خطای 402 نیاید).</li>
+        <li><b>۵) زیرنویس فارسی</b> — با رسم‌الخط درست و راست‌به‌چپ، روی نوار پایین تصویر حک می‌شود؛ فایل SRT جدا هم کنار ویدیو ذخیره می‌شود.</li>
+        <li><b>۶) ترکیب نهایی</b> — ffmpeg با حرکت آرام دوربین و محوِ ورود/خروج؛ اگر در <span dir="ltr">media/music</span> فایل mp3 بگذارید، موسیقی ملایم زیر صدا می‌رود. خروجی MP4 است و مستقیم در «رسانه‌ها» می‌آید — همان‌جا که پست‌ها عکس می‌گیرند.</li>
+      </ul>
+      <p><b>ساخت عکس</b> — توضیح بدهید (فارسی هم می‌شود) و عکس بگیرید؛ اندازهٔ مربع/عمودی/افقی و تعداد دلخواه. خروجی در «رسانه‌ها» ذخیره می‌شود تا در پست، استوری یا توییت استفاده شود. اگر سرویس اصلی کلید نداشته باشد یا خطا بدهد، خودکار روی Pollinations (رایگانِ محدود و بدون کلید) می‌سازد.</p>
+      <p><b>عیب‌یابی چاپخانه (۲.۱۳.۰):</b></p>
+      <ul>
+        <li><b>«خطای 403 از سرویس هوش مصنوعی — Forbidden» یا صفحهٔ HTML گوگل (گروک/Groq، جمینای، OpenAI…)</b> — یعنی آن سرویس IP شما (ایران) را نمی‌پذیرد: در <b>تنظیمات ← هوش مصنوعی ← «پروکسی فراخوانی سرویس‌ها»</b> آدرس VPN را بدهید و با «🔌 تست اتصال» امتحان کنید، یا سرویس <b>Z.ai</b> را انتخاب کنید که از ایران مستقیم کار می‌کند (مدل‌های Flash آن رایگان‌اند).</li>
+        <li><b>«خطای 404 — مدل وجود ندارد یا دسترسی ندارید» (۲.۱۴.۰)</b> — سرویس آن مدل را برای کلیدهای معمولی بسته است؛ مثلاً Groq مدل‌های llama-3.3-70b-versatile و llama-3.1-8b-instant را فقط Enterprise کرده است. راه حل: کنار فیلد «مدل» دکمهٔ <b>🔄</b> را بزنید تا فهرست مدل‌های همین لحظه مستقیم از خود سرویس بیاید، بعد یکی را انتخاب و ذخیره کنید (مدل‌های پیشنهادی Groq: GPT-OSS 120B و GPT-OSS 20B). مدل ذخیره‌شدهٔ قدیمی هم موقع بالا آمدن سرور خودکار با جایگزین رسمی عوض می‌شود.</li>
+        <li><b>«موجودی حساب Z.ai کافی نیست (1113)»</b> — یعنی کلید و مدل درست‌اند ولی شارژ تمام شده؛ از پنل <span dir="ltr">z.ai/manage-apikey/apikey-list</span> شارژ کنید، یا تصویرساز را روی <b>Pollinations</b> بگذارید (رایگانِ محدود).</li>
+        <li><b>«کد مدل نامعتبر (1211)»</b> — مدل انتخابی روی Z.ai وجود ندارد؛ فقط <span dir="ltr">glm-image</span> معتبر است. اگر تنظیمات قدیمی مدل CogView داشت، خودش به‌صورت خودکار جایگزین می‌شود.</li>
+        <li><b>«خطای 402 از Pollinations»</b> — سهمیهٔ رایگانِ IP شما فعلاً پر است؛ برنامه خودش صبر و تلاش مجدد می‌کند. برای سهمیهٔ بهتر، توکن رایگان <span dir="ltr">auth.pollinations.ai</span> را در تنظیمات ← کلید Pollinations بگذارید.</li>
+        <li><b>«اتصال قطع شد (WinError 10054)»</b> — اینترنت/VPN ناپایدار؛ گویندگی و دانلود تصاویر حالا تا ۳ بار خودکار دوباره تلاش می‌کنند.</li>
+        <li><b>«کتابخانهٔ edge-tts نصب نیست»</b> — از ۲.۱۲.۰ خود پنل آن را نصب می‌کند؛ اگر نشد، در لانچر دکمهٔ «نصب پیش‌نیازها» را بزنید.</li>
+      </ul>
+      <p>💡 نکته: ایجنت خودمختار هم این دو توانایی را دارد — اگر در ماموریت بنویسید «برای اینستاگرام عکس بساز و بگذار» یا «یک ویدیوی معرفی بساز»، خودش از همین چاپخانه استفاده می‌کند.</p>
+    </details>
+    <details>
+      <summary>💬 پاسخ‌گوی خودکار دایرکت (جدید ۲.۴.۰)</summary>
+      <p>در هر پلتفرمی که روشنش کنید (همهٔ ۷ پلتفرم پشتیبانی می‌شوند)، هر چند دقیقه یک‌بار:</p>
+      <ul>
+        <li>گفتگوهایی را پیدا می‌کند که <b>آخرین پیامشان از طرف مقابل</b> است و هنوز جواب نگرفته‌اند.</li>
+        <li>چند پیام آخر را می‌خواند و با <b>معرفی و لحن شما</b> (که در فرم می‌نویسید) جواب طبیعی می‌نویسد — کوتاه مثل چت واقعی.</li>
+        <li>مثل انسان (حرف‌به‌حرف) تایپ می‌کند و ارسال می‌کند.</li>
+      </ul>
+      <p><b>ایمنی:</b> سقف جواب روزانه، حداقل فاصلهٔ بین دو جواب، ساعت‌های فعال و «حالت پیش‌نمایش» (هیچ‌چیز نمی‌فرستد، فقط جواب‌های پیشنهادی را نشان می‌دهد) دارد. <b>توصیه:</b> اول پیش‌نمایش را روی یک پلتفرم اجرا کنید و جواب‌ها را ببینید؛ اگر رابط سایت عوض شده باشد، سلکتورها را می‌توان از تنظیمات فایل <span dir="ltr">config/settings.json</span> ← بخش dm_reply ← selectors بازنویسی کرد.</p>
+    </details>
+    <details>
+      <summary>🔐 حریم خصوصی</summary>
+      <p>سرور فقط روی <kbd>127.0.0.1</kbd> گوش می‌دهد. تنظیمات، رمزها و ماکروها همه در پوشهٔ <kbd>config</kbd> و <kbd>macros</kbd> روی همین سیستم می‌مانند. هیچ داده‌ای جایی فرستاده نمی‌شود — مگر خودِ سایت‌هایی که خودتان باز می‌کنید.</p>
+    </details>
+    <details>
+      <summary>❓ سوالات متداول</summary>
+      <p><b>مرورگر باز نمی‌شود؟</b> حالا خودکار است (۲.۶.۰): اگر Chromium داخل Playwright نباشد، خودش با آینهٔ npmmirror دانلود و نصب می‌شود؛ و اگر مرورگر انتخابی‌تان باز نشد، جایگزین‌ها امتحان می‌شوند. برای نصب دستی: <kbd>python -m playwright install chromium</kbd></p>
+      <p><b>ماکرو بعد از بستنِ دستیِ مرورگر دوباره پخش نمی‌شد؟</b> رفع شد (۲.۱۵.۰): پنل حالا می‌فهمد پنجرهٔ مرورگر بسته شده و خودش دوباره باز می‌کند — دیگر ری‌استارت لازم نیست. پایان یا توقف پخش هم خودش پنجرهٔ مرورگرِ همان پلتفرم را می‌بندد و دکمهٔ «⏹ توقف پخش» وسط کار هم در تب ضبط ماکرو ظاهر می‌شود.</p>
+      <p><b>اکشن خطا داد؟</b> سایت‌ها مدام ظاهر خود را عوض می‌کنند؛ لاگ را ببینید. اکثر اکشن‌ها صفحه را برایتان باز کرده‌اند تا دستی ادامه دهید.</p>
+      <p><b>کد تأیید تلگرام کجاست؟</b> در اپ تلگرام موبایل‌تان می‌آید و باید خودتان در صفحهٔ وب واردش کنید.</p>
+      <p><b>پنل باز نمی‌شود؟</b> مطمئن شوید فقط یک بار سرور را بالا آورده‌اید و پورت ۸۷۶۵ آزاد است.</p>
+    </details>
+  </div>
+</section>
+
+</main>
+
+<footer>ParsAgent · همهٔ پردازش‌ها محلی و روی سیستم شماست · نسخهٔ پنل ۲.۱۵.۰</footer>
+
+<div id="toast"></div>
+
+<script>
+"use strict";
+/* ---------- ابزار ---------- */
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const fa = n => String(n).replace(/\d/g, d => "۰۱۲۳۴۵۶۷۸۹"[d]);
+let OPT = null, MEDIA = [], MEDIA_TIMER = 0;
+const qr = { platform: "instagram", action: null };
+const sch = { platform: "instagram", action: null };
+
+async function api(path, method, body) {
+  const o = { method: method || "GET" };
+  if (body !== undefined) {
+    if (body instanceof FormData) o.body = body;
+    else { o.body = JSON.stringify(body); o.headers = { "Content-Type": "application/json" }; }
+  }
+  const r = await fetch(path, o);
+  if (!r.ok) { let m = r.statusText; try { m = (await r.json()).detail || m; } catch (e) {} throw new Error(m); }
+  return r.json();
+}
+function toast(msg, err) {
+  const d = document.createElement("div");
+  d.className = "toast" + (err ? " err" : "");
+  d.textContent = msg;
+  $("#toast").appendChild(d);
+  setTimeout(() => d.remove(), 4200);
+}
+function fmtSize(b) { return b > 1048576 ? (b/1048576).toFixed(1) + " MB" : Math.max(1, b/1024|0) + " KB"; }
+
+/* ---------- تب‌ها ---------- */
+$$("#tabs button").forEach(b => b.onclick = () => {
+  $$("#tabs button").forEach(x => x.classList.remove("active"));
+  b.classList.add("active");
+  $$(".tab").forEach(t => t.classList.remove("active"));
+  $("#tab-" + b.dataset.tab).classList.add("active");
+});
+
+/* ---------- ۲.۱۰.۰: راهنمای کلیدهای API — با کلیک روی «؟» باز/بسته می‌شود ---------- */
+$$(".keyhint").forEach(b => b.onclick = e => {
+  e.preventDefault(); e.stopPropagation();
+  const box = document.querySelector(`.keybox[data-keybox="${b.dataset.kb}"]`);
+  if (box) box.classList.toggle("hidden");
+});
+
+/* ---------- سازندهٔ فرم پارامترها (اجرای سریع + زمان‌بندی) ---------- */
+function buildParams(container, platform, actionId) {
+  const c = $(container); c.innerHTML = "";
+  const a = (OPT.actions[platform] || []).find(x => x.id === actionId);
+  if (!a) return;
+  for (const prm of a.params) {
+    const w = document.createElement("div");
+    w.style.cssText = "flex:1;min-width:210px";
+    const id = container + "-" + prm.key;
+    if (prm.type === "media") {
+      w.innerHTML = `<label class="f"><b>${prm.name}</b></label>
+        <div class="row"><select id="${id}" data-pkey="${prm.key}" data-ptype="media" style="flex:1"></select>
+        <button class="btn sm" type="button" onclick="pickUpload('${id}')">⬆ آپلود از سیستم</button></div>`;
+    } else if (prm.type === "textarea") {
+      w.innerHTML = `<label class="f"><b>${prm.name}</b>
+        <textarea id="${id}" data-pkey="${prm.key}" data-ptype="textarea"></textarea></label>`;
+    } else if (prm.type === "number") {
+      w.innerHTML = `<label class="f"><b>${prm.name}</b>
+        <input type="number" id="${id}" data-pkey="${prm.key}" data-ptype="number" value="${prm.default ?? 1}" min="1"></label>`;
+    } else {
+      w.innerHTML = `<label class="f"><b>${prm.name}</b>
+        <input type="text" id="${id}" data-pkey="${prm.key}" data-ptype="text"></label>`;
+    }
+    c.appendChild(w);
+  }
+  refreshMediaSelects();
+}
+function collectParams(container) {
+  const out = {};
+  $$(container + " [data-pkey]").forEach(el => {
+    const v = el.value.trim ? el.value.trim() : el.value;
+    if (v !== "") out[el.dataset.pkey] = el.dataset.ptype === "number" ? +v : v;
+  });
+  return out;
+}
+
+/* ---------- کتابخانهٔ رسانه ---------- */
+async function loadMedia() {
+  try { MEDIA = (await api("/api/media")).media; } catch (e) { MEDIA = []; }
+  renderMedia();
+  refreshMediaSelects();
+}
+function renderMedia() {
+  const g = $("#media-grid"); if (!g) return;
+  $("#media-count").textContent = fa(MEDIA.length);
+  g.innerHTML = MEDIA.length ? "" : `<span class="muted small">هنوز فایلی بارگذاری نشده — از بالا فایل اضافه کنید</span>`;
+  for (const m of MEDIA) {
+    const d = document.createElement("div");
+    d.className = "media-item";
+    d.innerHTML = `${m.image ? `<img src="/media/${encodeURIComponent(m.name)}" alt="${m.name}">` :
+      m.video ? `<video src="/media/${encodeURIComponent(m.name)}" controls preload="metadata" style="width:100%;height:80px;object-fit:cover;border-radius:8px;background:#000"></video>` :
+      `<div style="height:80px;display:flex;align-items:center;justify-content:center;font-size:30px">🎞</div>`}
+      <div class="fn">${m.name}</div>
+      <div class="muted" style="font-size:10.5px;margin-bottom:6px">${fmtSize(m.size)}</div>
+      <div class="row" style="justify-content:center">
+        <button class="btn sm primary" onclick="useMedia('${m.name.replace(/'/g, "\\'")}')">انتخاب</button>
+        <button class="btn sm danger" onclick="delMedia('${m.name.replace(/'/g, "\\'")}')">🗑</button>
+      </div>`;
+    g.appendChild(d);
+  }
+}
+function refreshMediaSelects() {
+  $$("select[data-ptype='media']").forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = MEDIA.length ? "" : `<option value="">(اول فایل آپلود کنید)</option>`;
+    for (const m of MEDIA) {
+      const o = document.createElement("option");
+      o.value = m.name; o.textContent = m.name.length > 34 ? "…" + m.name.slice(-33) : m.name;
+      sel.appendChild(o);
+    }
+    if (cur && MEDIA.some(m => m.name === cur)) sel.value = cur;
+    else if (MEDIA.length === 1) sel.value = MEDIA[0].name;
+  });
+}
+let lastMediaTarget = null;
+function useMedia(name) {
+  const sel = $("select[data-ptype='media']");
+  if (sel) { sel.value = name; toast("انتخاب شد: " + name); }
+  lastMediaTarget && (lastMediaTarget.value = name);
+}
+async function delMedia(name) {
+  try { MEDIA = (await api("/api/media/" + encodeURIComponent(name), "DELETE")).media; renderMedia(); refreshMediaSelects(); toast("حذف شد"); } catch (e) { toast(e.message, 1); }
+}
+async function uploadFiles(files, targetSelId) {
+  if (!files || !files.length) return;
+  const fd = new FormData();
+  for (const f of files) fd.append("files", f);
+  toast("در حال بارگذاری…");
+  try {
+    const r = await api("/api/media/upload", "POST", fd);
+    MEDIA = r.media;
+    renderMedia(); refreshMediaSelects();
+    if (targetSelId && r.saved && r.saved.length) {
+      const sel = $("#" + targetSelId.replace(/^#/, ""));
+      if (sel) sel.value = r.saved[0];
+    }
+    toast(`${fa(r.saved.length)} فایل بارگذاری شد ✅`);
+  } catch (e) { toast("خطای آپلود: " + e.message, 1); }
+}
+function pickUpload(selectId) {
+  lastMediaTarget = document.getElementById(selectId);
+  const inp = document.createElement("input");
+  inp.type = "file"; inp.accept = "image/*,video/*"; inp.multiple = true;
+  inp.onchange = () => uploadFiles(inp.files, selectId);
+  inp.click();
+}
+
+/* ---------- اجرای سریع ---------- */
+function fillActionSelect(sel, platform, current) {
+  sel.innerHTML = "";
+  for (const a of OPT.actions[platform] || []) {
+    const o = document.createElement("option");
+    o.value = a.id; o.textContent = a.name;
+    sel.appendChild(o);
+  }
+  if (current && (OPT.actions[platform] || []).some(a => a.id === current)) sel.value = current;
+  else sel.value = (OPT.actions[platform][0] || {}).id;
+  return sel.value;
+}
+function initQuick() {
+  const sp = $("#qr-platform"), sa = $("#qr-action");
+  sp.innerHTML = OPT.platforms.map(p => `<option value="${p.id}">${p.icon} ${p.name}</option>`).join("");
+  sp.value = qr.platform;
+  qr.action = fillActionSelect(sa, qr.platform, qr.action);
+  buildParams("#qr-params", qr.platform, qr.action);
+  sp.onchange = () => { qr.platform = sp.value; qr.action = fillActionSelect(sa, qr.platform, null); buildParams("#qr-params", qr.platform, qr.action); };
+  sa.onchange = () => { qr.action = sa.value; buildParams("#qr-params", qr.platform, qr.action); };
+  $("#qr-run").onclick = async () => {
+    const btn = $("#qr-run"); btn.disabled = true; btn.textContent = "⏳ در حال اجرا…";
+    $("#qr-runstate").textContent = "در حال اجرا… نتیجه در لاگ هم قابل دنبال‌کردن است.";
+    try {
+      const res = await api("/api/quickrun", "POST", { platform: qr.platform, action: qr.action, params: collectParams("#qr-params") });
+      const box = $("#qr-result");
+      box.classList.remove("hidden");
+      box.innerHTML = `<h3>${res.ok ? "✅" : "❌"} نتیجه</h3><p style="margin:0" class="${res.ok ? "" : "muted"}">${res.message || ""}</p>`;
+      toast(res.ok ? "انجام شد ✅" : res.message || "ناموفق", !res.ok);
+    } catch (e) { toast(e.message, 1); }
+    btn.disabled = false; btn.textContent = "▶ اجرا";
+    $("#qr-runstate").textContent = "";
+  };
+}
+
+/* ---------- زمان‌بندی ---------- */
+let __macroPlats = {};  // ۲.۱۵.۰ — نام ماکرو → پلتفرمِ ذخیره‌شده (از لحظهٔ ضبط)
+async function fillMacroSelect(cur) {
+  let r;
+  try { r = await api("/api/macro/list"); } catch (e) { r = { macros: [] }; }
+  const sel = $("#sch-macro");
+  sel.innerHTML = (r.macros || []).length ? "" : `<option value="">(اول در تب «ضبط ماکرو» ماکرو ذخیره کنید)</option>`;
+  __macroPlats = {};
+  for (const m of r.macros || []) {
+    const o = document.createElement("option");
+    o.value = m.name;
+    const p = (OPT.platforms || []).find(x => x.id === m.platform);
+    o.textContent = `${m.name} (${fa(m.events)} رخداد${p ? " — " + p.name : ""})`;
+    sel.appendChild(o);
+    __macroPlats[m.name] = m.platform || "";
+  }
+  if (cur) sel.value = cur;
+  syncSchMacroPlatform();
+}
+// ۲.۱۵.۰ — پلتفرمِ زمان‌بندیِ ماکرو از خودِ ماکرو می‌آید؛ دراپ‌داون پلتفرم
+// فقط برای ماکروهای قدیمیِ بدون پلتفرم به‌کار می‌آید (پلتفرم ذخیره‌شده برنده است)
+function syncSchMacroPlatform() {
+  if ($("#sch-kind").value !== "macro") return;
+  const plat = __macroPlats[$("#sch-macro").value];
+  if (plat && $("#sch-platform").value !== plat) {
+    $("#sch-platform").value = plat;
+    sch.platform = plat;
+  }
+}
+function renderSchKind() {
+  const isMacro = $("#sch-kind").value === "macro";
+  $("#sch-action-wrap").classList.toggle("hidden", isMacro);
+  $("#sch-params").classList.toggle("hidden", isMacro);
+  $("#sch-pacing").classList.toggle("hidden", isMacro);
+  $("#sch-macro-wrap").classList.toggle("hidden", !isMacro);
+  syncSchMacroPlatform();
+  $("#sch-title").placeholder = isMacro ? "مثلاً: پخش استوری‌گذاری هر روز ساعت ۱۰" : "مثلاً: فالو صبحگاهی اینستاگرام";
+}
+function initSched() {
+  const sp = $("#sch-platform"), sa = $("#sch-action"), gp = $("#guide-platform");
+  sp.innerHTML = OPT.platforms.map(p => `<option value="${p.id}">${p.icon} ${p.name}</option>`).join("");
+  gp.innerHTML = sp.innerHTML;
+  sp.value = sch.platform;
+  sch.action = fillActionSelect(sa, sch.platform, sch.action);
+  buildParams("#sch-params", sch.platform, sch.action);
+  sp.onchange = () => { sch.platform = sp.value; sch.action = fillActionSelect(sa, sch.platform, null); buildParams("#sch-params", sch.platform, sch.action); };
+  sa.onchange = () => { sch.action = sa.value; buildParams("#sch-params", sch.platform, sch.action); };
+  $("#sch-kind").onchange = renderSchKind;
+  renderSchKind();
+  fillMacroSelect();
+  $("#sch-macro").onchange = syncSchMacroPlatform;  // ۲.۱۵.۰ — پلتفرم از خودِ ماکرو
+
+  const type = $("#sch-type"), tbox = $("#sch-timing");
+  function renderTiming() {
+    if (type.value === "interval") {
+      tbox.innerHTML = `<div class="row">
+        <label class="f" style="flex:1"><b>هر چند دقیقه؟</b><input type="number" id="sch-min" value="30" min="1"></label>
+        <label class="f" style="flex:1"><b>جیتر ± دقیقه <span class="hint" data-tip="هر بار چند دقیقه زودتر/دیرتر تا الگوی ساعت‌شکنی رباتیک دیده نشود.">؟</span></b><input type="number" id="sch-jit" value="5" min="0"></label></div>`;
+    } else if (type.value === "daily") {
+      tbox.innerHTML = `<label class="f"><b>چه ساعاتی از شبانه‌روز؟</b></label><div class="hours" id="sch-hours">` +
+        Array.from({ length: 24 }, (_, h) => `<label><input type="checkbox" value="${h}" ${[10, 14, 21].includes(h) ? "checked" : ""}>${fa(h)}</label>`).join("") + `</div>
+        <label class="f" style="margin-top:10px"><b>دقیقهٔ ورود به هر ساعت</b><input type="number" id="sch-minute" value="5" min="0" max="59" style="max-width:130px"></label>`;
+    } else {
+      tbox.innerHTML = `<label class="f"><b>تاریخ و ساعت</b><input type="datetime-local" id="sch-at"></label>`;
+    }
+  }
+  type.onchange = renderTiming; renderTiming();
+
+  $("#sch-safe").onclick = () => {
+    const g = OPT.guide[sch.platform] || {};
+    const d = OPT.safe_delay[sch.action] || g.delay || [35, 120];
+    $("#sch-dmin").value = d[0]; $("#sch-dmax").value = d[1];
+    toast("فاصلهٔ ایمن پیشنهادی اعمال شد 🛡");
+  };
+  $("#sch-save").onclick = async () => {
+    const timing = { type: type.value };
+    if (type.value === "interval") {
+      timing.minutes = +$("#sch-min").value || 30;
+      timing.jitter = +$("#sch-jit").value || 0;
+    } else if (type.value === "daily") {
+      timing.hours = $$("#sch-hours input:checked").map(i => +i.value);
+      timing.minute = +$("#sch-minute").value || 0;
+      if (!timing.hours.length) return toast("حداقل یک ساعت انتخاب کنید", 1);
+    } else {
+      timing.at = $("#sch-at").value;
+      if (!timing.at) return toast("تاریخ و ساعت را مشخص کنید", 1);
+    }
+    const body = {
+      title: $("#sch-title").value.trim(),
+      platform: sch.platform,
+      timing,
+    };
+    if ($("#sch-kind").value === "macro") {
+      body.type = "macro";
+      body.macro = $("#sch-macro").value;
+      if (!body.macro) return toast("اول یک ماکرو انتخاب کنید", 1);
+    } else {
+      body.action = sch.action;
+      body.params = collectParams("#sch-params");
+      body.pacing = { delay_min: +$("#sch-dmin").value || 35, delay_max: +$("#sch-dmax").value || 120 };
+    }
+    try {
+      await api("/api/schedules", "POST", body);
+      toast("زمان‌بندی ذخیره شد ✅");
+      $("#sch-title").value = "";
+      await refreshSchedList();
+    } catch (e) { toast(e.message, 1); }
+  };
+  renderGuide();
+  gp.onchange = renderGuide;
+}
+function renderGuide() {
+  const pid = $("#guide-platform").value;
+  const g = OPT.guide[pid];
+  if (!g) return;
+  $("#guide-box").innerHTML = `
+    <table><tbody>${g.rows.map(r => `<tr><th style="width:52%">${r[0]}</th><td>${r[1]}</td></tr>`).join("")}</tbody></table>
+    <p class="small muted" style="margin:10px 0 4px">🕘 ساعات طبیعی فعالیت: <b>${g.active}</b> — فاصلهٔ پیشنهادی بین اکشن‌ها: <b>${fa(g.delay[0])} تا ${fa(g.delay[1])} ثانیه</b></p>
+    <ul style="margin:4px 0 0;padding-inline-start:18px">${g.tips.map(t => `<li class="small muted" style="margin-bottom:4px">${t}</li>`).join("")}</ul>`;
+}
+async function refreshSchedList() {
+  let st;
+  try { st = await api("/api/state"); } catch (e) { return; }
+  renderSchedList(st.schedules);
+  updateDynamic(st);
+}
+function schedTimingText(s) {
+  const t = s.timing || {};
+  if (t.type === "interval") return `هر ${fa(t.minutes)} دقیقه ${t.jitter ? "±" + fa(t.jitter) : ""}`;
+  if (t.type === "daily") return `روزانه در ساعت‌های ${t.hours.map(fa).join("، ")}`;
+  if (t.type === "once") return "یک‌بار — " + (t.at || "").replace("T", " ساعت ");
+  return "";
+}
+function renderSchedList(list) {
+  const box = $("#sch-list");
+  box.innerHTML = list.length ? "" : `<span class="muted small">هنوز زمان‌بندی‌ای ندارید</span>`;
+  for (const s of list) {
+    const isMacro = s.type === "macro";
+    const platName = OPT.platforms.find(p => p.id === s.platform)?.name || s.platform;
+    const sub = isMacro
+      ? `🎬 پخش ماکرو «${s.macro}» روی ${platName} · ${schedTimingText(s)}`
+      : `${platName} · ${(OPT.actions[s.platform] || []).find(a => a.id === s.action)?.name || s.action} · ${schedTimingText(s)}`;
+    const d = document.createElement("div");
+    d.className = "setrow";
+    d.innerHTML = `
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:700;font-size:13.5px">${s.enabled ? (isMacro ? "🎬 " : "") : "⏸ "}${s.title}</div>
+        <div class="muted small">${sub}</div>
+        <div class="small" data-next="${s.id}">${s.running ? "⏳ در حال اجرا…" : (s.enabled && s.next_run ? "⏰ اجرای بعدی: " + fa(s.next_run.replace("T", " ساعت ").slice(5, 16)) : "—")}</div>
+      </div>
+      <div class="row" style="flex:none">
+        <button class="btn sm ${s.enabled ? "warn" : "primary"}" data-tgl="${s.id}">${s.enabled ? "توقف" : "فعال‌سازی"}</button>
+        <button class="btn sm" data-run="${s.id}">▶ اجرا</button>
+        <button class="btn sm danger" data-del="${s.id}">🗑</button>
+      </div>`;
+    box.appendChild(d);
+  }
+  $$("[data-tgl]").forEach(b => b.onclick = async () => { await api("/api/schedules/" + b.dataset.tgl + "/toggle", "POST"); refreshSchedList(); });
+  $$("[data-run]").forEach(b => b.onclick = async () => { try { await api("/api/schedules/" + b.dataset.run + "/run", "POST"); toast("اجرا شد"); } catch (e) { toast(e.message, 1); } });
+  $$("[data-del]").forEach(b => b.onclick = async () => { await api("/api/schedules/" + b.dataset.del, "DELETE"); refreshSchedList(); });
+}
+
+/* ---------- پلتفرم‌ها ---------- */
+function initPlats() {
+  const g = $("#plat-grid");
+  g.innerHTML = "";
+  for (const p of OPT.platforms) {
+    const d = document.createElement("div");
+    d.className = "plat-card";
+    d.innerHTML = `
+      <div class="row" style="justify-content:space-between">
+        <div class="row"><span class="ic">${p.icon}</span><span class="nm">${p.name}</span></div>
+        <span class="chip off" data-plat="${p.id}" title="باز: نشست مرورگر این پلتفرم فعال است و دستورها فوراً اجرا می‌شوند — بسته: اولین دستور مرورگر را با همان پروفایل باز می‌کند؛ لاگین و کوکی‌ها همیشه حفظ می‌شوند">● بسته</span>
+      </div>
+      <div class="muted small" style="direction:ltr;text-align:left">${p.url.replace("https://", "")}</div>
+      <div class="row">
+        <button class="btn primary sm" data-login="${p.id}">🔐 ورود</button>
+        <button class="btn sm" data-open="${p.id}">🌐 باز کردن</button>
+        <button class="btn sm danger" data-close="${p.id}">✖ بستن</button>
+      </div>`;
+    g.appendChild(d);
+  }
+  const dash = $("#dash-plats");
+  dash.innerHTML = "";
+  for (const p of OPT.platforms) {
+    const r = document.createElement("div");
+    r.className = "row";
+    r.style.justifyContent = "space-between";
+    r.innerHTML = `<span class="small">${p.icon} ${p.name}</span><span class="chip off" data-plat="${p.id}" title="باز = نشست فعال و آمادهٔ اجرا · بسته = با اولین دستور باز می‌شود (لاگین حفظ می‌شود)">● بسته</span>`;
+    dash.appendChild(r);
+  }
+  $$("[data-login]").forEach(b => b.onclick = async () => {
+    b.disabled = true; toast("در حال باز کردن صفحهٔ ورود…");
+    try { const r = await api(`/api/quickrun`, "POST", { platform: b.dataset.login, action: "login", params: {} });
+      toast(r.message || "صفحهٔ ورود باز شد", !r.ok); } catch (e) { toast(e.message, 1); }
+    b.disabled = false;
+  });
+  $$("[data-open]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await api(`/api/quickrun`, "POST", { platform: b.dataset.open, action: "open", params: {} }); toast("باز شد"); } catch (e) { toast(e.message, 1); }
+    b.disabled = false;
+  });
+  $$("[data-close]").forEach(b => b.onclick = async () => {
+    b.disabled = true;
+    try { await api("/api/platforms/" + b.dataset.close + "/close", "POST"); toast("بسته شد"); } catch (e) { toast(e.message, 1); }
+    b.disabled = false;
+  });
+}
+
+/* ---------- ماکرو ---------- */
+function initMacro() {
+  $("#mc-platform").innerHTML = OPT.platforms.map(p => `<option value="${p.id}">${p.icon} ${p.name}</option>`).join("");
+  $("#mc-start").onclick = async () => {
+    try {
+      const r = await api("/api/macro/start", "POST", { platform: $("#mc-platform").value });
+      toast(r.ok ? "🔴 ضبط شروع شد — در پنجرهٔ مرورگر کار کنید" : r.message, !r.ok);
+    } catch (e) { toast(e.message, 1); }
+  };
+  $("#mc-stop").onclick = async () => {
+    const name = $("#mc-name").value.trim();
+    try {
+      const r = await api("/api/macro/stop", "POST", { platform: $("#mc-platform").value, name });
+      const dr = r.dropped ? ` — ${fa(r.dropped)} رویداد خارج از پلتفرم نادیده گرفته شد` : "";
+      toast(r.ok ? `ذخیره شد: ${r.saved} (${fa(r.events)} رخداد)${dr}` : r.message, !r.ok);
+      $("#mc-name").value = "";
+    } catch (e) { toast(e.message, 1); }
+  };
+  // ۲.۱۵.۰ — دکمهٔ توقف پخش (درخواست کاربر)؛ فقط وقتی پخشی در جریان است دیده می‌شود
+  $("#mc-stoprun").onclick = async () => {
+    try {
+      const r = await api("/api/macro/stop-run", "POST");
+      toast(r.message || (r.ok ? "در حال توقف…" : "پخشی در حال اجرا نیست"), !r.ok);
+    } catch (e) { toast(e.message, 1); }
+  };
+}
+// ۲.۱۵.۰ — امضای آخرین رندر لیست ماکروها: تا وقتی چیزی عوض نشده (و وضعیت
+// پخش همان باشد) لیست بازسازی نمی‌شود — قبلاً پُل ۳ ثانیه‌ایِ state کل لیست
+// را دوباره می‌ساخت و انتخابِ دراپ‌داون وسط کار به گزینهٔ اول برمی‌گشت.
+let __mcSig = "";
+function renderMacros(saved) {
+  const playing = window.__mcPlaying || null;
+  const sig = JSON.stringify([saved || [], playing ? [playing.platform, playing.name] : null]);
+  if (sig === __mcSig) return;
+  __mcSig = sig;
+  const box = $("#mc-list");
+  box.innerHTML = saved && saved.length ? "" : `<span class="muted small">ماکرویی ذخیره نشده</span>`;
+  for (const m0 of saved || []) {
+    const m = typeof m0 === "string" ? { name: m0, events: 0, platform: "" } : m0;  // سازگاری با stateهای قدیمی
+    const p = (OPT.platforms || []).find(x => x.id === m.platform);
+    // ۲.۱۵.۰ — پلتفرمِ لحظهٔ ضبط زیر نام ماکرو نوشته می‌شود (درخواست کاربر)؛
+    // دراپ‌داون فقط برای ماکروهای قدیمیِ بدون پلتفرم مانده است
+    const platHtml = p
+      ? `<span class="chip on" title="این ضبط متعلق به همین پلتفرم است — از لحظهٔ ضبط"> ${p.icon} ${p.name}</span>`
+      : `<select data-mcpl="${m.name}" class="btn sm" style="width:150px;padding:5px 8px" title="ماکروی قدیمی بدون پلتفرم — پلتفرم اجرا را انتخاب کنید">${OPT.platforms.map(x => `<option value="${x.id}">${x.icon} ${x.name}</option>`).join("")}</select>`;
+    const d = document.createElement("div");
+    d.className = "setrow";
+    d.innerHTML = `<div><b>${m.name}</b> <span class="muted small">— ${fa(m.events)} رخداد</span> ${platHtml}</div>
+      <div class="row">
+        <button class="btn sm primary" data-mcrun="${m.name}" data-mcplat="${m.platform || ""}" ${playing ? "disabled" : ""}>${playing ? "⏳ در حال پخش…" : "▶ اجرا"}</button>
+        <button class="btn sm warn" data-mcsch="${m.name}" title="زمان‌بندی پخش خودکار این ماکرو">📅 زمان‌بندی</button>
+        <button class="btn sm danger" data-mcdel="${m.name}">🗑</button>
+      </div>`;
+    box.appendChild(d);
+  }
+  $$("[data-mcrun]").forEach(b => b.onclick = async () => {
+    // ۲.۱۵.۰ — پلتفرم از خودِ ماکرو؛ فقط ماکرو قدیمی از دراپ‌داون همان ردیف
+    let platform = b.dataset.mcplat || "";
+    if (!platform) {
+      const selEl = document.querySelector(`[data-mcpl="${CSS.escape(b.dataset.mcrun)}"]`);
+      if (selEl) platform = selEl.value;
+    }
+    b.disabled = true; b.textContent = "⏳ در حال پخش…";
+    try { const r = await api("/api/macro/run", "POST", { platform, name: b.dataset.mcrun }); toast(r.message || "تمام", 1); }
+    catch (e) { toast(e.message, 1); }
+    b.disabled = false; b.textContent = "▶ اجرا";
+  });
+  $$("[data-mcsch]").forEach(b => b.onclick = async () => {
+    // پرش به تب زمان‌بندی با نوع «پخش ماکرو» و انتخاب همین ماکرو
+    $$("#tabs button").forEach(x => x.classList.remove("active"));
+    document.querySelector('[data-tab="sched"]').classList.add("active");
+    $$(".tab").forEach(t => t.classList.remove("active"));
+    $("#tab-sched").classList.add("active");
+    $("#sch-kind").value = "macro";
+    renderSchKind();
+    await fillMacroSelect(b.dataset.mcsch);
+    $("#sch-title").value = `پخش ${b.dataset.mcsch}`;
+    toast("ماکرو در تب زمان‌بندی آماده شد — نوع زمان را انتخاب و ذخیره کنید");
+  });
+  $$("[data-mcdel]").forEach(b => b.onclick = async () => { await api("/api/macro/" + encodeURIComponent(b.dataset.mcdel), "DELETE"); toast("حذف شد"); });
+}
+
+/* ---------- تنظیمات ---------- */
+const ST_ROWS = {webdriver:"hide_webdriver", langs:"spoof_languages", plugins:"plugins_mimic",
+  chrome:"chrome_runtime", perm:"permissions_fix", uafix:"ua_fix", ua:"spoof_ua",
+  webgl:"webgl_mask", canvas:"canvas_noise", audio:"audio_noise", font:"font_mask",
+  hw:"hardware_specs", webrtc:"webrtc_shield", typing:"human_typing", delays:"human_delays",
+  mouse:"mouse_curves", scroll:"random_scrolls", dwell:"page_dwell", night:"night_pause"};
+const ST_ALL = Object.keys(ST_ROWS).map(k => "st-" + k);
+let stLevel = "standard";
+const ST_LEVELS = {
+  basic: {on: ["webdriver","langs","plugins","chrome","perm","uafix","webgl","canvas","hw","typing","delays","night"].map(x => "st-" + x), speed: "human"},
+  standard: {on: ST_ALL.filter(id => !["st-ua","st-webrtc"].includes(id)), speed: "human"},
+  max: {on: ST_ALL.filter(id => id !== "st-ua"), speed: "slow"},
+};
+function updateUaRow() { $("#st-ua-row").classList.toggle("hidden", !$("#st-ua").checked); }
+function applyLevel(lv) {
+  stLevel = lv;
+  const cfg = ST_LEVELS[lv];
+  for (const id of ST_ALL) { const el = $("#" + id); if (el) el.checked = cfg.on.includes(id); }
+  $("#st-speed").value = cfg.speed;
+  updateUaRow();
+  toast("سطح «" + {basic: "پایه", standard: "استاندارد", max: "حداکثر"}[lv] + "» اعمال شد — برای ثبت، «ذخیره همهٔ تنظیمات» را بزنید");
+}
+function initSettings(st) {
+  $("#set-headless").checked = !!st.general.headless;
+  $("#set-channel").value = st.general.channel || "auto";
+  $("#set-proxy").value = st.general.proxy || "";
+  const s = st.stealth;
+  stLevel = s.level || "standard";
+  $("#st-enabled").checked = !!s.enabled;
+  for (const [id, key] of Object.entries(ST_ROWS)) {
+    const el = $("#st-" + id);
+    if (el) el.checked = !!s[key];
+  }
+  $("#st-speed").value = s.typing_speed || "human";
+  $("#st-ua-val").value = s.user_agent || "";
+  updateUaRow();
+  $("#st-ua").onchange = updateUaRow;
+  $$("[data-level]").forEach(b => b.onclick = () => applyLevel(b.dataset.level));
+  const pp = $("#st-perplat");
+  pp.innerHTML = "";
+  for (const p of OPT.platforms) {
+    const l = document.createElement("label");
+    l.className = "chip" + (s.per_platform[p.id] ? " on" : "");
+    l.style.cursor = "pointer";
+    l.innerHTML = `<input type="checkbox" data-pp="${p.id}" ${s.per_platform[p.id] ? "checked" : ""} style="display:none">${p.icon} ${p.name}`;
+    // preventDefault ضروری است: بدون آن، رفتار پیش‌فرضِ <label> خودش چک‌باکس را
+    // دوباره تاگل می‌کند و نتیجهٔ کلیکِ دستیِ ما خنثی می‌شود (باگ گروه ۴ در ۲.۸.۰)
+    l.onclick = (e) => { e.preventDefault(); const c = l.querySelector("input"); c.checked = !c.checked; l.classList.toggle("on", c.checked); };
+    pp.appendChild(l);
+  }
+  $("#cap-mode").value = st.captcha.mode || "notify";
+  $("#cap-provider").value = st.captcha.provider || "2captcha";
+  $("#cap-wait").value = st.captcha.manual_wait_seconds || 180;
+
+  $("#set-save").onclick = async () => {
+    const stealth = {enabled: $("#st-enabled").checked, level: stLevel, typing_speed: $("#st-speed").value,
+      user_agent: $("#st-ua-val").value.trim(),
+      per_platform: Object.fromEntries($$("[data-pp]").map(c => [c.dataset.pp, c.checked]))};
+    for (const [id, key] of Object.entries(ST_ROWS)) stealth[key] = !!$("#st-" + id).checked;
+    const body = {
+      general: { headless: $("#set-headless").checked, channel: $("#set-channel").value, proxy: $("#set-proxy").value.trim() },
+      stealth,
+      captcha: { mode: $("#cap-mode").value, provider: $("#cap-provider").value, manual_wait_seconds: +$("#cap-wait").value || 180 },
+      ai: collectAiSettings(),
+    };
+    try { await api("/api/settings", "POST", body); toast("تنظیمات ذخیره شد ✅ — برای نشست‌های باز فعلی، پلتفرم را ببندید و دوباره باز کنید"); } catch (e) { toast(e.message, 1); }
+  };
+}
+async function initCreds() {
+  let c;
+  try { c = await api("/api/credentials"); } catch (e) { return; }
+  const g = $("#cred-grid");
+  g.innerHTML = "";
+  for (const p of OPT.platforms) {
+    const isMsg = ["telegram", "bale", "rubika"].includes(p.id);
+    const d = document.createElement("div");
+    d.className = "card";
+    d.style.margin = "0";
+    // ۲.۱۱.۰ — واتساپ: نه اسمی هست نه رمزی؛ ورود فقط با اسکن QR است.
+    // کارتِ آن در «ورود خودکار» جعبهٔ راهنمای سبز است (فیلدی برای پر کردن ندارد).
+    if (p.id === "whatsapp") {
+      d.innerHTML = `
+        <h3 style="margin-bottom:8px">${p.icon} ${p.name}</h3>
+        <div style="background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.4);border-radius:10px;padding:10px 12px;font-size:12.5px;line-height:2">
+          ✅ <b>واتساپ اسم و رمز ندارد</b> — ورود فقط با <b>اسکن QR</b> از گوشی است:<br>
+          ۱) در تب «پلتفرم‌ها» دکمهٔ <b>«ورود»</b> واتساپ را بزنید؛<br>
+          ۲) با گوشی: واتساپ ← تنظیمات ← <b>دستگاه‌های متصل</b> ← <b>اتصال دستگاه</b>؛<br>
+          ۳) کد QR داخل پنجرهٔ باز‌شده را اسکن کنید — پنل تا ۳ دقیقه صبر می‌کند و خودش می‌فهمد.<br>
+          <span class="muted">سشن در پروفایل مرورگر ذخیره می‌شود؛ دفعات بعد اسکن لازم نیست. برای عوض کردن حساب، پوشهٔ profiles/whatsapp را حذف کنید.</span>
+        </div>`;
+      g.appendChild(d);
+      continue;
+    }
+    d.innerHTML = `
+      <h3 style="margin-bottom:8px">${p.icon} ${p.name}</h3>
+      <label class="f"><b>${isMsg ? "شماره تلفن" : "نام کاربری / ایمیل"}</b>
+        <input type="text" data-cu="${p.id}" value="${(c[p.id] || {}).username || ""}"></label>
+      <label class="f"><b>رمز عبور ${isMsg ? "(معمولاً لازم نیست)" : ""} ${c[p.id] && c[p.id].has_password ? '<span class="chip on">ذخیره شده ✓</span>' : ""}</b>
+        <div class="row">
+          <input type="password" data-cp="${p.id}" placeholder="${c[p.id] && c[p.id].has_password ? "بدون تغییر اگر خالی بماند" : "رمز عبور"}" style="flex:1">
+          <button class="btn sm danger" data-cclr="${p.id}" type="button">پاک کردن</button>
+        </div></label>`;
+    g.appendChild(d);
+  }
+  $$("[data-cclr]").forEach(b => b.onclick = async () => {
+    const pid = b.dataset.cclr;
+    try {
+      await api("/api/credentials", "POST", { platform: pid, username: $(`[data-cu="${pid}"]`).value, password: "", clear_password: true });
+      toast("رمز پاک شد"); initCreds();
+    } catch (e) { toast(e.message, 1); }
+  });
+  $("#cred-save").onclick = async () => {
+    for (const p of OPT.platforms) {
+      if (p.id === "whatsapp") continue;  // واتساپ QR است — فیلدی برای ذخیره ندارد
+      const pw = $(`[data-cp="${p.id}"]`).value;
+      try { await api("/api/credentials", "POST", { platform: p.id, username: $(`[data-cu="${p.id}"]`).value, password: pw }); } catch (e) { toast(e.message, 1); return; }
+    }
+    toast("اطلاعات ورود همهٔ پلتفرم‌ها ذخیره شد ✅"); initCreds();
+  };
+}
+function initTestBot() {
+  $("#tb-platform").innerHTML = OPT.platforms.map(p => `<option value="${p.id}">${p.icon} ${p.name}</option>`).join("");
+  $("#tb-run").onclick = async () => {
+    const btn = $("#tb-run"), box = $("#tb-result");
+    btn.disabled = true; btn.textContent = "⏳ در حال تست…";
+    box.innerHTML = `<span class="muted small">مرورگر باز می‌شود و چند لحظه طول می‌کشد…</span>`;
+    try {
+      const r = await api("/api/test-bot", "POST", { platform: $("#tb-platform").value });
+      box.innerHTML = `<h3>${r.ok ? "✅ همهٔ تست‌ها موفق" : "⚠ بعضی موارد نیاز به بررسی دارد"}</h3>` +
+        r.checks.map(c => `<div class="test-res"><span>${c.ok ? "✅" : "❌"} <b>${c.name}</b><br><span class="muted small">${c.detail}</span></span></div>`).join("");
+    } catch (e) { box.innerHTML = `<div class="test-res"><span class="bad">❌ ${e.message}</span></div>`; }
+    btn.disabled = false; btn.textContent = "🧪 اجرای تست بات";
+  };
+}
+
+/* ---------- رسانه: دراپ‌زون ---------- */
+function initDz() {
+  const dz = $("#dz"), inp = $("#dz-input");
+  dz.onclick = () => inp.click();
+  inp.onchange = () => uploadFiles(inp.files);
+  dz.ondragover = e => { e.preventDefault(); dz.classList.add("drag"); };
+  dz.ondragleave = () => dz.classList.remove("drag");
+  dz.ondrop = e => { e.preventDefault(); dz.classList.remove("drag"); uploadFiles(e.dataTransfer.files); };
+}
+
+/* ---------- لاگ و WebSocket ---------- */
+function appendLog(e) {
+  const f = $("#logfeed");
+  const d = document.createElement("div");
+  d.innerHTML = `<span class="${e.level || ""}">${e.msg || ""}</span><span class="t">${e.t || ""}</span>`;
+  f.appendChild(d);
+  while (f.children.length > 200) f.removeChild(f.firstChild);
+  f.scrollTop = f.scrollHeight;
+}
+function initWs() {
+  try {
+    const proto = location.protocol === "https:" ? "wss" : "ws";
+    const ws = new WebSocket(`${proto}://${location.host}/ws`);
+    ws.onmessage = ev => {
+      try {
+        const m = JSON.parse(ev.data);
+        if (m.type === "log") appendLog(m);
+        else if (m.type === "schedules") refreshSchedList();
+        else if (m.type === "agent") refreshMissions();
+        else if (m.type === "ai_job") updateJob(m.job);
+        else if (m.type === "media") loadMedia();
+      } catch (e) {}
+    };
+  } catch (e) {}
+}
+
+/* ---------- پُل وضعیت (فقط عناصر داینامیک — فرم‌ها هرگز بازسازی نمی‌شوند) ---------- */
+function updateDynamic(st) {
+  // وضعیت پلتفرم‌ها
+  for (const p of OPT.platforms) {
+    const ps = (st.platforms || {})[p.id] || {};
+    $$(`[data-plat="${p.id}"]`).forEach(ch => {
+      ch.className = "chip " + (ps.open ? "on" : "off") + (ps.recording ? " rec" : "");
+      ch.textContent = ps.open ? "● باز" : "● بسته";
+    });
+  }
+  // آمار
+  const s = st.stats || {};
+  $('[data-dyn="runs"]').textContent = fa(s.runs || 0);
+  $('[data-dyn="success"]').textContent = fa(s.success || 0);
+  $('[data-dyn="fail"]').textContent = fa(s.fail || 0);
+  $('[data-dyn="sched"]').textContent = fa((st.schedules || []).filter(x => x.enabled).length);
+  // زمان‌بندی‌های پیش‌رو (فقط متن ردیف‌ها)
+  const up = (st.schedules || []).filter(x => x.enabled && x.next_run).sort((a, b) => a.next_run.localeCompare(b.next_run)).slice(0, 6);
+  $("#dash-sched").innerHTML = up.length ? up.map(x =>
+    `<div class="row small" style="justify-content:space-between;padding:3px 0">
+      <span>${x.title}</span><span class="muted">⏰ ${fa(x.next_run.replace("T", " ").slice(5, 16))}</span></div>`).join("")
+    : `<span class="muted small">زمان‌بندی فعالی نیست</span>`;
+  // آخرین نتیجه
+  const lr = st.last_result;
+  if (lr) {
+    $("#dash-last").innerHTML = `${lr.ok ? "✅" : "❌"} <b>${lr.action}</b> روی ${lr.platform} <span class="muted">(${fa(lr.at)})</span><br><span class="muted">${lr.message}</span>`;
+  }
+  // اجرای جاری
+  const cr = st.current_run;
+  $('[data-dyn="qrstate"]').textContent = cr ? `در حال اجرا: ${cr.action} روی ${cr.platform}…` : "";
+  // ماکرو
+  const mc = st.macro || {};
+  const chip = $('[data-dyn="macro"]');
+  chip.className = "chip" + (mc.recording ? " rec" : "");
+  chip.textContent = mc.recording ? `🔴 در حال ضبط (${mc.platform})` : "● غیرفعال";
+  $('[data-dyn="macroevents"]').textContent = fa(mc.events || 0) + " رخداد";
+  // ۲.۱۴.۰ — شمار رویدادهای نادیده‌گرفته‌شده (پنل/سایت‌های دیگر) فقط وقتی > 0 دیده شود
+  const drp = $('[data-dyn="macrodropped"]');
+  if (drp) {
+    const n = (mc.dropped_panel || 0) + (mc.dropped_foreign || 0);
+    drp.style.display = n > 0 ? "" : "none";
+    drp.textContent = fa(n) + " رویداد خارج از پلتفرم نادیده گرفته شد";
+    drp.title = "کلیک روی پنل و فعالیت در سایت‌های دیگر ضبط نمی‌شود — این‌ها نادیده گرفته شدند";
+  }
+  // ۲.۱۵.۰ — پخشِ جاری: چیپ وضعیت + دکمهٔ «توقف پخش» (درخواست کاربر)
+  const playing = mc.playing || null;
+  window.__mcPlaying = playing;
+  const pchip = $('[data-dyn="macroplaying"]');
+  if (pchip) {
+    pchip.style.display = playing ? "" : "none";
+    if (playing) {
+      const pn = (OPT.platforms || []).find(x => x.id === playing.platform);
+      pchip.textContent = `▶ در حال پخش: ${playing.name}${pn ? " (" + pn.name + ")" : ""}`;
+    }
+  }
+  const srb = $("#mc-stoprun");
+  if (srb) {
+    srb.style.display = playing ? "" : "none";
+    srb.disabled = false;
+  }
+  renderMacros(mc.saved || []);
+  // متن ردیف‌های زمان‌بندی
+  for (const sc of st.schedules || []) {
+    const el = $(`[data-next="${sc.id}"]`);
+    if (el) el.textContent = sc.running ? "⏳ در حال اجرا…" :
+      (sc.enabled && sc.next_run ? "⏰ اجرای بعدی: " + fa(sc.next_run.replace("T", " ساعت ").slice(5, 16)) : "—");
+  }
+}
+
+/* ---------- هوش مصنوعی (۲.۳.۰) ---------- */
+let AICAT = { providers: [] }, AIHIST = [];
+const AI_EXAMPLES = [
+  "این ۷ ایده را این هفته بگیر و برای هر کدام ۳ پست بساز؛ در تلگرام (کانال من) و توییتر منتشر کن و آخر هفته گزارش بده — ایده‌ها: آموزش عکاسی با موبایل، پشت صحنهٔ کار، معرفی محصول جدید، نظرسنجی هفتگی، داستان موفقیت مشتری، نکات سریع، تخفیف آخر هفته",
+  "برای رشد پیج اینستاگرامم استراتژی فالو بچین: هر روز چند نفر و در چه ساعاتی فالو کنم؟ از هشتگ عکاسی شروع کن و برنامه‌اش را بساز",
+  "برای لینکدین ۵ پست حرفه‌ای دربارهٔ تجربهٔ تیم‌سازی بساز و برای هفتهٔ آینده زمان‌بندی کن؛ فعلاً منتشر نکن",
+  "فقط محتوای اینستاگرام و بله برای معرفی فروشگاهم بساز — ۴ ایده: محصولات پرفروش، ارسال رایگان، پکیج هدیه، سفارش اختصاصی"
+];
+const AI_TOOLS = {generate_content: "✍️ تولید محتوا", generate_image: "🎨 ساخت عکس با AI", generate_video: "🎬 چاپخانهٔ ویدیو", dm_autoreply: "💬 پاسخ‌گوی دایرکت", schedule_publish: "📅 زمان‌بندی انتشار", publish_now: "🚀 انتشار فوری", follow_strategy: "🎯 استراتژی فالو", wait_report: "⏰ گزارش زمان‌دار", report: "📝 گزارش نهایی", status_check: "🌐 بررسی وضعیت"};
+const AI_STATUS = {planning: ["در حال فکر و برنامه‌ریزی…", ""], wait_approval: ["منتظر تأیید شما", "rec"], running: ["در حال اجرا", "on"], paused: ["متوقف", "off"], waiting: ["در انتظار زمان گزارش", ""], completed: ["تمام شد ✅", "on"], failed: ["ناموفق", "rec"], cancelled: ["لغو شد", "off"]};
+const AI_PSTATUS = s => ({draft: "پیش‌نویس", scheduled: "📅 در صف انتشار", published: "منتشر شد ✅", failed: "ناموفق", needs_media: "📷 منتظر عکس (تب رسانه‌ها)", no_channel: "📢 کانال مشخص نیست"}[s] || s || "پیش‌نویس");
+function escapeHtml(s) { return String(s || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function fillAiProvider(sel, cur) {
+  sel.innerHTML = "";
+  for (const p of AICAT.providers || []) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.name + (p.has_key ? " ✓" : "");
+    sel.appendChild(o);
+  }
+  if (cur && (AICAT.providers || []).some(p => p.id === cur)) sel.value = cur;
+  return sel.value;
+}
+let aiSavedModel = "";
+function fillAiModel(sel, pid, cur) {
+  sel.innerHTML = "";
+  const p = (AICAT.providers || []).find(x => x.id === pid);
+  for (const m of (p && p.models) || []) {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = m.name + (m.tag ? " («" + m.tag + "»)" : "");
+    if (m.note) o.title = m.note;
+    sel.appendChild(o);
+  }
+  // ۲.۱۴.۰ — اگر مدل ذخیره‌شده توسط سرویس حذف شده باشد (خطای 404)،
+  // جایگزین رسمی انتخاب و به کاربر گفته می‌شود
+  if (cur && p && !(p.models || []).some(m => m.id === cur) && p.dead_current && p.dead_replacement) {
+    toast("♻️ مدل «" + aiSavedModel + "» توسط سرویس حذف شده بود (خطای 404) — جایگزین رسمی انتخاب شد", 1);
+    cur = p.dead_replacement;
+  }
+  if (cur && (p ? p.models : []).some(m => m.id === cur)) sel.value = cur;
+  return sel.value;
+}
+// ۲.۱۴.۰ — دریافت فهرست مدل‌های «همین لحظه» از خود سرویس (GET /models با کلید کاربر)
+async function fetchLiveModels(btn, provSel, modelSel) {
+  const prov = provSel.value;
+  if (!prov) return;
+  const old = btn.textContent;
+  btn.disabled = true; btn.textContent = "⏳";
+  try {
+    // اول ذخیره تا کلید/پروکسی تازه اعمال شود (تنظیمات ← هوش مصنوعی)
+    try { await api("/api/settings", "POST", { ai: collectAiSettings() }); } catch (e) {}
+    const r = await api("/api/ai/models?provider=" + encodeURIComponent(prov));
+    if (!r.ok || !(r.models || []).length) throw new Error(r.message || "مدلی برنگشت");
+    const cur = modelSel.value;
+    modelSel.innerHTML = "";
+    for (const m of r.models) {
+      const o = document.createElement("option");
+      o.value = m.id;
+      o.textContent = m.id;
+      o.title = "مدل زنده از خود سرویس";
+      modelSel.appendChild(o);
+    }
+    if (r.models.some(m => m.id === cur)) { modelSel.value = cur; }
+    else if (r.models[0]) {
+      modelSel.value = r.models[0].id;
+      toast("مدل قبلی (" + cur + ") دیگر در سرویس نیست — «" + r.models[0].id + "» انتخاب شد؛ تنظیمات را ذخیره کنید", 1);
+    }
+    toast("✅ " + fa(r.models.length) + " مدل زنده از سرویس آمد", 1);
+  } catch (e) {
+    toast("❌ دریافت مدل‌ها ناموفق: " + e.message, 1);
+  } finally {
+    btn.disabled = false; btn.textContent = old;
+  }
+}
+function aiKeyHint() {
+  const p = (AICAT.providers || []).find(x => x.id === $("#ai-provider").value);
+  const el = $("#ai-keyhint");
+  if (!p) { el.textContent = ""; return; }
+  el.textContent = p.has_key ? "✓ کلید این سرویس ذخیره شده است"
+    : (p.id === "custom" ? "آدرس سرویس سفارشی را از تنظیمات وارد کنید"
+      : "⚠ کلید این سرویس وارد نشده — تنظیمات ← هوش مصنوعی");
+  el.style.color = p.has_key ? "var(--ok)" : "var(--amber)";
+}
+function collectAiSettings() {
+  const keys = {};
+  $$("[data-aikey]").forEach(inp => keys[inp.dataset.aikey] = inp.value.trim());
+  return {
+    provider: $("#ai-def-provider").value || "zai",
+    model: $("#ai-def-model").value || "glm-4.6",
+    autonomy: $("#ai-def-autonomy").value || "semi",
+    temperature: +$("#ai-temp").value || 0.7,
+    budgets: { posts_per_day: +$("#ai-maxposts").value || 4 },
+    api_keys: keys,
+    proxy: $("#ai-proxy").value.trim(),
+    custom_base: $("#ai-custom-base").value.trim(),
+    custom_model: $("#ai-custom-model").value.trim()
+  };
+}
+async function initAi() {
+  try { AICAT = await api("/api/ai/catalog"); } catch (e) { AICAT = { providers: [] }; }
+  let ai = null;
+  try { ai = (await api("/api/settings")).ai; } catch (e) {}
+  aiSavedModel = (ai && ai.model) || "";
+  // — فرم ماموریت (تب هوش مصنوعی)
+  fillAiProvider($("#ai-provider"), (ai && ai.provider) || "zai");
+  fillAiModel($("#ai-model"), $("#ai-provider").value, ai && ai.model);
+  $("#ai-autonomy").value = (ai && ai.autonomy) || "semi";
+  $("#ai-provider").onchange = () => { fillAiModel($("#ai-model"), $("#ai-provider").value, null); aiKeyHint(); };
+  aiKeyHint();
+  // ۲.۱۴.۰ — دکمهٔ «مدل‌های زنده» (فرم ماموریت)
+  const liveBtn = $("#ai-model-live");
+  if (liveBtn) liveBtn.onclick = () => fetchLiveModels(liveBtn, $("#ai-provider"), $("#ai-model"));
+  // — فرم تنظیمات
+  fillAiProvider($("#ai-def-provider"), (ai && ai.provider) || "zai");
+  fillAiModel($("#ai-def-model"), $("#ai-def-provider").value, ai && ai.model);
+  // ۲.۱۴.۰ — دکمهٔ «مدل‌های زنده» (فرم تنظیمات)
+  const liveBtn2 = $("#ai-def-model-live");
+  if (liveBtn2) liveBtn2.onclick = () => fetchLiveModels(liveBtn2, $("#ai-def-provider"), $("#ai-def-model"));
+  $("#ai-def-provider").onchange = () => fillAiModel($("#ai-def-model"), $("#ai-def-provider").value, null);
+  $("#ai-def-autonomy").value = (ai && ai.autonomy) || "semi";
+  $("#ai-temp").value = (ai && ai.temperature != null) ? ai.temperature : 0.7;
+  $("#ai-maxposts").value = (ai && ai.budgets && ai.budgets.posts_per_day) || 4;
+  $("#ai-custom-base").value = (ai && ai.custom_base) || "";
+  $("#ai-custom-model").value = (ai && ai.custom_model) || "";
+  // ۲.۱۳.۰ — پروکسی فراخوانی سرویس‌های AI + دکمهٔ تست اتصال
+  $("#ai-proxy").value = (ai && ai.proxy) || "";
+  $("#ai-test-conn").onclick = async () => {
+    const btn = $("#ai-test-conn"), res = $("#ai-test-res");
+    const prov = $("#ai-def-provider").value || "zai";
+    btn.disabled = true;
+    res.style.display = "block";
+    res.style.color = "var(--muted)";
+    res.textContent = "… تنظیمات ذخیره و «" + prov + "» تست می‌شود …";
+    try {
+      // اول ذخیره تا پروکسی/کلید تازه اعمال شود
+      await api("/api/settings", "POST", { ai: collectAiSettings() });
+      const r = await api("/api/ai/test", "POST", { provider: prov });
+      res.textContent = r.ok ? r.message : ("❌ " + (r.message || "تست ناموفق بود"));
+      res.style.color = r.ok ? "var(--ok)" : "#f87171";
+    } catch (e) {
+      res.textContent = "❌ " + e.message;
+      res.style.color = "#f87171";
+    }
+    btn.disabled = false;
+  };
+  $("#ai-def-provider").onchange = () => fillAiModel($("#ai-def-model"), $("#ai-def-provider").value, null);
+  const keys = (ai && ai.api_keys) || {};
+  $$("[data-aikey]").forEach(inp => {
+    inp.value = keys[inp.dataset.aikey] || "";
+    if (!inp.value && inp.placeholder.indexOf("اختیاری") === -1) inp.placeholder += " — ذخیره نشده";
+  });
+  // — نمونه‌ها و دکمه‌ها
+  const ex = $("#ai-examples");
+  ex.innerHTML = "";
+  AI_EXAMPLES.forEach((t, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "btn sm";
+    b.textContent = "💡 نمونهٔ " + fa(i + 1);
+    b.title = t.slice(0, 120) + "…";
+    b.onclick = () => { $("#ai-instruction").value = t; $("#ai-instruction").focus(); };
+    ex.appendChild(b);
+  });
+  $("#ai-create").onclick = createMission;
+  $("#ai-chatsend").onclick = sendAiChat;
+  $("#ai-chatin").onkeydown = e => { if (e.key === "Enter") sendAiChat(); };
+  await refreshMissions();
+  await initAiMedia();
+  await loadDm();
+  refreshJobs();
+}
+async function createMission() {
+  const instruction = $("#ai-instruction").value.trim();
+  if (!instruction) return toast("اول متن ماموریت/ایده را بنویسید", 1);
+  const btn = $("#ai-create");
+  btn.disabled = true; btn.textContent = "⏳ در حال ساخت ماموریت…";
+  try {
+    const r = await api("/api/ai/missions", "POST", {
+      instruction,
+      provider: $("#ai-provider").value,
+      model: $("#ai-model").value,
+      autonomy: $("#ai-autonomy").value
+    });
+    if (r.ok) {
+      toast("🚀 ماموریت ساخته شد — ایجنت شروع کرد؛ کارت پایین را دنبال کنید");
+      $("#ai-instruction").value = "";
+      await refreshMissions();
+    } else toast(r.message || "ساخت ماموریت ناموفق بود", 1);
+  } catch (e) { toast(e.message, 1); }
+  btn.disabled = false; btn.textContent = "🚀 شروع ماموریت";
+}
+function missionCard(m) {
+  const d = document.createElement("div");
+  d.className = "card";
+  d.style.margin = "0 0 14px";
+  const st = AI_STATUS[m.status] || [m.status, "off"];
+  const aut = { manual: "پیشنهادی", semi: "نیمه‌خودکار", auto: "کاملاً خودمختار"}[m.autonomy] || m.autonomy;
+  let stepsHtml = "";
+  if (m.plan && m.plan.steps && m.plan.steps.length) {
+    stepsHtml = `<div style="margin:10px 0 4px">` + m.plan.steps.map((s, i) => {
+      let ic = "•";
+      if (s.status === "done" || i < m.step_index) ic = "✅";
+      else if (s.status === "failed") ic = "❌";
+      else if (i === m.step_index && (m.status === "running" || m.status === "wait_approval")) ic = "⏳";
+      return `<div class="small" style="padding:2px 0">${ic} <b>${AI_TOOLS[s.action] || s.action}</b>${s.reason ? ` <span class="muted">— ${escapeHtml(s.reason)}</span>` : ""}</div>`;
+    }).join("") + "</div>";
+  }
+  const posts = m.posts || [];
+  const postsHtml = posts.length
+    ? `<details style="margin:8px 0"><summary>📦 ${fa(posts.length)} پست تولیدشده — ${fa(m.counts ? m.counts.scheduled : 0)} مورد در صف انتشار</summary>` +
+      posts.map(p => `<div class="small" style="border-bottom:1px dashed var(--border);padding:7px 0">
+        <b>${p.id}</b> · ${((OPT.platforms || []).find(x => x.id === p.platform) || {}).name || p.platform} · ${AI_PSTATUS(p.status)}
+        <span class="muted">· ایده: ${escapeHtml((p.idea || "").slice(0, 50))}</span>
+        <div class="muted" style="white-space:pre-wrap;margin-top:4px;line-height:1.9">${escapeHtml(p.text)}</div></div>`).join("") + "</details>"
+    : "";
+  const log = m.log || [];
+  const openAttr = ["running", "planning", "wait_approval"].includes(m.status) ? " open" : "";
+  const logHtml = log.length
+    ? `<details style="margin:8px 0"${openAttr}><summary>📜 لاگ ایجنت (${fa(log.length)} رخداد)</summary><div class="scroll" style="max-height:230px;overflow-y:auto">` +
+      log.map(l => `<div class="small" style="padding:2px 0;color:${l.level === "error" ? "var(--danger)" : l.level === "warn" ? "var(--amber)" : "var(--muted)"}"><span style="opacity:.6">${l.t}</span> — ${escapeHtml(l.msg)}</div>`).join("") + "</div></details>"
+    : "";
+  const rep = m.report;
+  const repHtml = rep ? `<div style="background:var(--accent-soft);border:1px solid var(--accent-b);border-radius:12px;padding:12px 14px;margin-top:10px">
+      <b>📊 گزارش نهایی ماموریت</b>
+      <div style="white-space:pre-wrap;line-height:2;margin-top:6px">${escapeHtml(rep.summary || "")}</div>
+      ${rep.stats ? `<div class="small muted" style="margin-top:8px">📊 ${fa(rep.stats.posts_generated || 0)} پست در ${fa(Object.keys(rep.stats.by_platform || {}).length)} پلتفرم · 📅 ${fa(rep.stats.scheduled || 0)} در صف انتشار · 🚀 ${fa(rep.stats.published_now || 0)} انتشار فوری</div>` : ""}
+    </div>` : "";
+  const ctl = [];
+  if (m.status === "wait_approval") ctl.push(`<button class="btn sm primary" data-mctl="${m.id}:approve">✅ تأیید و اجرا</button>`);
+  if (m.status === "running" || m.status === "planning") ctl.push(`<button class="btn sm warn" data-mctl="${m.id}:pause">⏸ توقف</button>`);
+  if (m.status === "paused") ctl.push(`<button class="btn sm primary" data-mctl="${m.id}:resume">▶ ادامه از همین‌جا</button>`);
+  if (["running", "planning", "paused", "waiting", "wait_approval"].includes(m.status))
+    ctl.push(`<button class="btn sm danger" data-mctl="${m.id}:cancel">🛑 لغو</button>`);
+  d.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <div style="min-width:0">
+        <b style="font-size:15px">🎯 ${escapeHtml(m.title)}</b>
+        <div class="muted small" style="margin-top:3px">${m.provider} / ${m.model} · خودمختاری: ${aut} · ${fa((m.created_at || "").slice(0, 10))}</div>
+      </div>
+      <span class="chip ${st[1]}">● ${st[0]}</span>
+    </div>
+    ${m.plan && m.plan.analysis ? `<p class="muted small" style="margin:10px 0 0;line-height:1.9">🧠 ${escapeHtml(m.plan.analysis)}</p>` : ""}
+    ${stepsHtml}${postsHtml}${logHtml}${repHtml}
+    ${ctl.length ? `<div class="row" style="margin-top:10px">${ctl.join("")}</div>` : ""}`;
+  return d;
+}
+async function refreshMissions() {
+  let r;
+  try { r = await api("/api/ai/missions"); } catch (e) { return; }
+  const list = r.missions || [];
+  const box = $("#ai-missions");
+  if (!box) return;
+  $("#ai-mcount").textContent = fa(list.length);
+  box.innerHTML = list.length ? "" : `<span class="muted small">هنوز ماموریتی ساخته نشده — از فرم بالا اولین ایده‌تان را بدهید</span>`;
+  for (const m of list) box.appendChild(missionCard(m));
+  $$("[data-mctl]").forEach(b => b.onclick = async () => {
+    const [mid, cmd] = b.dataset.mctl.split(":");
+    try {
+      const r2 = await api("/api/ai/missions/" + mid + "/control", "POST", { cmd });
+      toast(r2.message || "انجام شد", !r2.ok);
+      await refreshMissions();
+    } catch (e) { toast(e.message, 1); }
+  });
+}
+function chatBubble(who, text) {
+  const box = $("#ai-chatlog");
+  if (box.querySelector(".muted")) box.innerHTML = "";
+  const d = document.createElement("div");
+  d.style.cssText = who === "user"
+    ? "background:var(--accent-soft);border:1px solid var(--accent-b);border-radius:12px 12px 3px 12px;padding:9px 13px;max-width:88%;align-self:flex-start"
+    : "background:var(--card2);border:1px solid var(--border);border-radius:12px 12px 12px 3px;padding:9px 13px;max-width:88%;align-self:flex-end";
+  d.style.whiteSpace = "pre-wrap";
+  d.style.lineHeight = "1.9";
+  d.textContent = text;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+async function sendAiChat() {
+  const inp = $("#ai-chatin");
+  const text = inp.value.trim();
+  if (!text) return;
+  inp.value = "";
+  chatBubble("user", text);
+  AIHIST.push({ role: "user", content: text });
+  const btn = $("#ai-chatsend");
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    const r = await api("/api/ai/chat", "POST", { provider: $("#ai-provider").value, model: $("#ai-model").value, messages: AIHIST });
+    const reply = r.reply || r.message || "…";
+    chatBubble("bot", reply);
+    if (r.ok !== false) AIHIST.push({ role: "assistant", content: reply });
+  } catch (e) { chatBubble("bot", "خطا: " + e.message); }
+  btn.disabled = false; btn.textContent = "ارسال";
+}
+
+/* ---------- ۲.۴.۰ — چاپخانهٔ رسانه (عکس/ویدیو) و پاسخ‌گوی دایرکت ---------- */
+let IMGCAT = { providers: [], sizes: {} }, VOICEDATA = { voices: [], aspects: {} }, JOBS = [];
+function fillImgModels() {
+  const sel = $("#im-model"), pid = $("#im-provider").value;
+  sel.innerHTML = "";
+  const p = (IMGCAT.providers || []).find(x => x.id === pid);
+  for (const m of (p && p.models) || []) {
+    const o = document.createElement("option");
+    o.value = m.id;
+    o.textContent = m.name + (m.tag ? " («" + m.tag + "»)" : "");
+    if (m.note) o.title = m.note;
+    sel.appendChild(o);
+  }
+}
+async function initAiMedia() {
+  try { IMGCAT = await api("/api/ai/image-providers"); } catch (e) { IMGCAT = { providers: [], sizes: {} }; }
+  try { VOICEDATA = await api("/api/ai/voices"); } catch (e) { VOICEDATA = { voices: [], aspects: {} }; }
+  // — فرم عکس
+  const pSel = $("#im-provider");
+  pSel.innerHTML = "";
+  for (const p of IMGCAT.providers || []) {
+    const o = document.createElement("option");
+    o.value = p.id;
+    o.textContent = p.name + (p.has_key ? " ✓" : (p.id === "pollinations" ? " ✓" : ""));
+    pSel.appendChild(o);
+  }
+  pSel.onchange = fillImgModels;
+  fillImgModels();
+  const sSel = $("#im-size");
+  sSel.innerHTML = "";
+  for (const [k, v] of Object.entries(IMGCAT.sizes || {})) {
+    const o = document.createElement("option");
+    o.value = k; o.textContent = v.name || k;
+    sSel.appendChild(o);
+  }
+  $("#im-go").onclick = async () => {
+    const prompt = $("#im-prompt").value.trim();
+    if (!prompt) return toast("توضیح عکس را بنویسید", 1);
+    const btn = $("#im-go");
+    btn.disabled = true;
+    $("#im-status").textContent = "در حال ساخت…";
+    try {
+      const r = await api("/api/ai/image", "POST", {
+        prompt, count: +$("#im-count").value || 1, size: $("#im-size").value,
+        provider: $("#im-provider").value, model: $("#im-model").value
+      });
+      if (r.ok) { toast("🎨 ساخت عکس شروع شد — پیشرفت در کارت «کارهای ساخت رسانه»"); $("#im-prompt").value = ""; refreshJobs(); }
+    } catch (e) { toast(e.message, 1); }
+    btn.disabled = false;
+    $("#im-status").textContent = "خروجی‌ها در تب «رسانه‌ها» هم می‌آیند.";
+  };
+  // — فرم ویدیو
+  const vSel = $("#vd-voice");
+  vSel.innerHTML = "";
+  for (const v of VOICEDATA.voices || []) {
+    const o = document.createElement("option");
+    o.value = v.id; o.textContent = v.name;
+    vSel.appendChild(o);
+  }
+  const vd = VOICEDATA.video_defaults || {};
+  if (vd.voice) vSel.value = vd.voice;
+  const aSel = $("#vd-aspect");
+  aSel.innerHTML = "";
+  for (const [k, v] of Object.entries(VOICEDATA.aspects || {})) {
+    const o = document.createElement("option");
+    o.value = k; o.textContent = v.name || k;
+    aSel.appendChild(o);
+  }
+  if (vd.aspect) aSel.value = vd.aspect;
+  if (vd.seconds) $("#vd-seconds").value = vd.seconds;
+  if (vd.material) $("#vd-material").value = vd.material;
+  $("#vd-go").onclick = async () => {
+    const topic = $("#vd-topic").value.trim();
+    if (!topic) return toast("موضوع ویدیو را بنویسید", 1);
+    const btn = $("#vd-go");
+    btn.disabled = true;
+    try {
+      const r = await api("/api/ai/video", "POST", {
+        topic, voice: $("#vd-voice").value, aspect: $("#vd-aspect").value,
+        seconds: +$("#vd-seconds").value || 45, material: $("#vd-material").value
+      });
+      if (r.ok) { toast("🎬 چاپخانه شروع کرد — زنجیرهٔ ساخت را در «کارهای ساخت رسانه» دنبال کنید"); refreshJobs(); }
+    } catch (e) { toast(e.message, 1); }
+    btn.disabled = false;
+  };
+  const dSel = $("#dm-preview-p");
+  dSel.innerHTML = "";
+  for (const p of OPT.platforms || []) {
+    const o = document.createElement("option");
+    o.value = p.id; o.textContent = p.icon + " " + p.name;
+    dSel.appendChild(o);
+  }
+}
+function jobCard(j) {
+  const d = document.createElement("div");
+  d.className = "card";
+  d.style.margin = "0 0 12px";
+  d.id = "job-" + j.id;
+  const icon = j.kind === "video" ? "🎬" : "🎨";
+  const stTxt = { running: ["در حال ساخت…", "on"], done: ["آماده شد ✅", "on"], failed: ["ناموفق ❌", "rec"], cancelled: ["لغو شد", "off"] }[j.status] || [j.status, "off"];
+  const results = (j.results || []).map(r =>
+    r.url && /\.(mp4|mov|webm)$/i.test(r.file || r.url || "")
+      ? `<video src="${r.url}" controls preload="metadata" style="width:100%;max-width:340px;border-radius:10px;background:#000"></video>`
+      : (r.url ? `<a href="${r.url}" target="_blank" rel="noopener"><img src="${r.url}" alt="${escapeHtml(r.file || "")}" style="width:104px;height:104px;object-fit:cover;border-radius:10px;border:1px solid var(--border)"></a>` : "")
+  ).join(" ");
+  const scenes = (j.results && j.results[0] && j.results[0].scenes || []).map(s => `<div class="small muted" style="padding:1px 0">• ${escapeHtml((s.narration || "").slice(0, 90))}</div>`).join("");
+  d.innerHTML = `
+    <div class="row" style="justify-content:space-between">
+      <b class="small">${icon} ${escapeHtml(j.title || "")}</b>
+      <span class="chip ${stTxt[1]}">● ${stTxt[0]}</span>
+    </div>
+    <div style="height:8px;background:var(--card2);border-radius:6px;overflow:hidden;margin:8px 0 6px">
+      <div style="height:100%;width:${fa(j.progress || 0)}%;background:var(--accent,#10b981);transition:width .4s"></div>
+    </div>
+    <div class="small muted">${escapeHtml(j.step || "")}${j.error ? ` — <b style="color:var(--danger)">${escapeHtml(j.error)}</b>` : ""}</div>
+    ${results ? `<div class="row" style="margin-top:8px;flex-wrap:wrap">${results}</div>` : ""}
+    ${scenes ? `<details style="margin-top:6px"><summary class="small">📜 فیلم‌نامه (${fa(j.results[0].scenes.length)} صحنه)</summary>${scenes}</details>` : ""}`;
+  return d;
+}
+function renderJobs() {
+  const box = $("#ai-jobs");
+  if (!box) return;
+  $("#ai-jcount").textContent = fa(JOBS.length);
+  box.innerHTML = JOBS.length ? "" : `<span class="muted small">هنوز کاری شروع نشده — از دو کارت بالا عکس یا ویدیو بسازید.</span>`;
+  for (const j of JOBS) box.appendChild(jobCard(j));
+}
+function updateJob(j) {
+  if (!j) return;
+  const i = JOBS.findIndex(x => x.id === j.id);
+  if (i >= 0) JOBS[i] = j; else JOBS.unshift(j);
+  JOBS = JOBS.slice(0, 12);
+  renderJobs();
+  if (j.status === "done") { loadMedia(); toast((j.kind === "video" ? "🎬 ویدیو" : "🎨 عکس") + " آماده شد — در «رسانه‌ها»"); }
+  if (j.status === "failed") toast("ساخت رسانه ناموفق: " + (j.error || ""), 1);
+}
+async function refreshJobs() {
+  try { JOBS = (await api("/api/ai/jobs")).jobs || []; renderJobs(); } catch (e) {}
+}
+/* ---------- پاسخ‌گوی دایرکت ---------- */
+async function loadDm() {
+  let r;
+  try { r = await api("/api/ai/dmreply"); } catch (e) { return; }
+  const c = r.config || {};
+  $("#dm-persona").value = c.persona || "";
+  $("#dm-tone").value = c.tone || "";
+  $("#dm-cap").value = c.daily_cap != null ? c.daily_cap : 40;
+  $("#dm-roundmin").value = c.round_minutes != null ? c.round_minutes : 20;
+  $("#dm-gap").value = c.min_reply_gap_min != null ? c.min_reply_gap_min : 12;
+  const hrs = c.active_hours || [9, 23];
+  $("#dm-h-lo").value = hrs[0]; $("#dm-h-hi").value = hrs[1];
+  $("#dm-dry").checked = c.dry_run !== false;
+  const box = $("#dm-plats");
+  box.innerHTML = "";
+  for (const p of OPT.platforms || []) {
+    const on = (c.platforms || {})[p.id];
+    const lab = document.createElement("label");
+    lab.style.cssText = "display:flex;align-items:center;gap:5px;font-size:12px;cursor:pointer;border:1px solid var(--border);border-radius:8px;padding:4px 9px";
+    lab.innerHTML = `<input type="checkbox" data-dmplat="${p.id}" ${on ? "checked" : ""}> ${p.icon} ${p.name}`;
+    box.appendChild(lab);
+  }
+  dmChip(r.running);
+  dmStats(r.stats);
+}
+function dmChip(run) {
+  const el = $("#dm-chip");
+  el.className = "chip " + (run ? "on" : "");
+  el.textContent = run ? "● فعال — در حال جواب دادن" : "● خاموش";
+}
+function dmStats(s) {
+  s = s || {};
+  const today = (s.replies && Object.entries(s.replies).map(([k, v]) => `${k}: ${fa(v)}`).join(" · ")) || "—";
+  $("#dm-stats").textContent = `جواب‌های امروز — ${today}`;
+}
+async function saveDm() {
+  const platforms = {};
+  $$("[data-dmplat]").forEach(x => platforms[x.dataset.dmplat] = x.checked);
+  try {
+    const r = await api("/api/ai/dmreply", "POST", {
+      persona: $("#dm-persona").value.trim(), tone: $("#dm-tone").value.trim(),
+      daily_cap: +$("#dm-cap").value || 40, round_minutes: +$("#dm-roundmin").value || 20,
+      min_reply_gap_min: +$("#dm-gap").value || 12,
+      active_hours: [+$("#dm-h-lo").value || 9, +$("#dm-h-hi").value || 23],
+      dry_run: $("#dm-dry").checked, platforms
+    });
+    dmChip(r.running);
+    toast("تنظیمات پاسخ‌گوی ذخیره شد");
+    return true;
+  } catch (e) { toast(e.message, 1); return false; }
+}
+async function dmToggle(start) {
+  if (!(await saveDm())) return;
+  try {
+    const r = await api("/api/ai/dmreply/" + (start ? "start" : "stop"), "POST");
+    toast(r.message || (start ? "روشن شد" : "خاموش شد"), !r.ok);
+    dmChip(start);
+  } catch (e) { toast(e.message, 1); }
+}
+async function dmPreview() {
+  const btn = $("#dm-preview-btn");
+  btn.disabled = true; btn.textContent = "…";
+  try {
+    const r = await api("/api/ai/dmreply/dryrun", "POST", { platform: $("#dm-preview-p").value });
+    const box = $("#dm-preview");
+    if (r.ok && r.proposals && r.proposals.length) {
+      box.innerHTML = `<b class="small">🔍 ${fa(r.proposals.length)} گفتگو نیازمند جواب (هیچ‌چیز ارسال نشد):</b>` +
+        r.proposals.map(p => `
+          <div class="card" style="margin:8px 0">
+            <div class="small" style="line-height:2">${p.conversation.slice(-3).map(x => `<div class="muted">${x.mine ? "من: " : "او: "}${escapeHtml(x.text)}</div>`).join("")}</div>
+            <div style="background:var(--accent-soft);border:1px solid var(--accent-b);border-radius:10px;padding:8px 12px;margin-top:8px">💬 <b>${escapeHtml(p.reply)}</b></div>
+          </div>`).join("");
+    } else {
+      box.innerHTML = `<span class="muted small">${escapeHtml(r.message || "گفتگوی بی‌جوابی پیدا نشد")}</span>`;
+    }
+  } catch (e) { toast(e.message, 1); }
+  btn.disabled = false; btn.textContent = "🔍 پیش‌نمایش (بدون ارسال)";
+}
+
+/* ---------- راه‌اندازی ---------- */
+(async function init() {
+  try { OPT = await api("/api/options"); } catch (e) { toast("ارتباط با سرور برقرار نشد: " + e.message, 1); return; }
+  initPlats();
+  initQuick();
+  initSched();
+  initMacro();
+  initTestBot();
+  initDz();
+  initAi().then(async () => {
+    // دکمه‌های پاسخ‌گوی دایرکت بعد از لود فرم وصل می‌شوند
+    $("#dm-start").onclick = () => dmToggle(true);
+    $("#dm-stop").onclick = () => dmToggle(false);
+    $("#dm-preview-btn").onclick = dmPreview;
+  });
+  let st0;
+  try { st0 = await api("/api/state"); } catch (e) { st0 = null; }
+  if (st0) {
+    initSettings(await api("/api/settings"));
+    await initCreds();
+    renderSchedList(st0.schedules);
+    updateDynamic(st0);
+  }
+  await loadMedia();
+  initWs();
+  // پُل ۳ ثانیه‌ای — فقط chipها و متن‌ها را آپدیت می‌کند؛
+  // هیچ select/input/form بازسازی نمی‌شود (رفع باگ برگشتن انتخاب به گزینهٔ اول)
+  setInterval(async () => {
+    try { updateDynamic(await api("/api/state")); } catch (e) {}
+    try { if (JOBS.some(j => j.status === "running")) { JOBS = (await api("/api/ai/jobs")).jobs || JOBS; renderJobs(); } } catch (e) {}
+  }, 3000);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the provided image, here is the report:\n\n1.  **Footer Status Bar:** **No.** The footer status bar containing \"سرور محلی\" (Local Server) is **not visible** in this screenshot. The image cuts off at the bottom of the \"Anti-Bot and Security\" card. Therefore, it cannot be confirmed if it is positioned cleanly or overlapping.\n2.  **Anti-Bot Settings Card:** **Yes.** There is a prominent section titled \"🔒 ضمانت و تنظیمات ربات‌زدا\" (Guarantee and Anti-Bot Settings). It contains:\n    *   **Toggle switches:** For various detection methods (Canvas, WebGL, AudioContext, etc.).\n    *   **Level Pills:** A row of selectable tags for security levels (e.g., \"+ پایه\", \"+ متوسط\", \"+ پیشرفته\").\n3.  **Visual Breakage/Overlapping:** **No.** The layout appears clean and well-structured. All cards, text labels, toggle switches, and sidebar elements are properly aligned with no visible overlapping or visual glitches within the visible area.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1790367669,
+  "id": "20260926042106179475f6fa1244fa",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "20260926042106179475f6fa1244fa",
+  "usage": {
+    "completion_tokens": 235,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1755,
+    "prompt_tokens_details": {
+      "cached_tokens": 5
+    },
+    "total_tokens": 1990
+  }
+}

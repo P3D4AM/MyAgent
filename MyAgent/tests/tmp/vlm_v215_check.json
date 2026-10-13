@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the provided screenshot:\n\n1.  **Layout:** The layout is clean with no overlapping elements.\n2.  **Saved Macros List:** No, the saved-macros list is not visible in this view. The image displays the \"Macro Recording\" (ضبط ماکرو) tab, which currently shows a large instructional text box and a header. The list of saved macros and the platform chips are likely located further down the page (below the visible area).\n3.  **Buttons:** No, the red '🔴 شروع ضبط' (Start Recording) and amber '⏹ توقف و ذخیره' (Stop & Save) buttons are not visible in this specific crop. They are likely positioned below the current viewport or within a section that requires scrolling to access.\n4.  **Visual Defects:** There are no obvious visual defects in the visible portion of the UI; the text, icons, and background appear correctly rendered.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1791888387,
+  "id": "202610131846208b06eae37fb24722",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "202610131846208b06eae37fb24722",
+  "usage": {
+    "completion_tokens": 199,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1000,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "total_tokens": 1199
+  }
+}

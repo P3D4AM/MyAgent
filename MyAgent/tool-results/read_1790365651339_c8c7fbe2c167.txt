@@ -1,0 +1,1372 @@
+     1→#!/usr/bin/env python3
+     2→# -*- coding: utf-8 -*-
+     3→"""ParsAgent Web Panel — سرور محلیِ پنل کنترل
+     4→================================================
+     5→
+     6→همان ایجنت پارس‌ایجنت، اما با یک سرور وب محلی (فقط روی همین سیستم:
+     7→http://127.0.0.1:8765) که همهٔ قابلیت‌ها را از مرورگر قابل استفاده می‌کند:
+     8→
+     9→  • پلتفرم‌ها   → باز کردن/بستن مرورگر هر پلتفرم (پروفایل ماندگار) + اکشن‌ها
+    10→  • وظایف      → اجرای فایل‌های تسک JSON + ویرایشگر + نمونه‌ها
+    11→  • ضبط ماکرو   → شروع/توقف از خود پنل (یا کلید F9/F10) + ذخیره/پخش با سرعت
+    12→  • سیستم      → اسکرین‌شات زنده، کلیک/تایپ/هاتکی/اسکرول، اعلان، دستور، خاموشی
+    13→  • لاگ‌ها      → استریم زندهٔ رویدادهای همهٔ موتورها (WebSocket)
+    14→  • تنظیمات     → ویرایش مستقیم config.json
+    15→
+    16→اجرا (راه توصیه‌شده — از لانچر گرافیکی):
+    17→    python launcher.py          → دکمهٔ «اجرای سرور»
+    18→
+    19→اجرا (دستی):
+    20→    python server.py
+    21→    python -m uvicorn server:app --host 127.0.0.1 --port 8765
+    22→
+    23→نکتهٔ امنیتی: سرور فقط روی 127.0.0.1 گوش می‌دهد؛ از بیرونِ همین
+    24→سیستم قابل دسترسی نیست و نیازی به اینترنت هم ندارد.
+    25→"""
+    26→
+    27→from __future__ import annotations
+    28→
+    29→import asyncio
+    30→import base64
+    31→import importlib.util
+    32→import io
+    33→import itertools
+    34→import json
+    35→import logging
+    36→import os
+    37→import platform as _platform
+    38→import queue
+    39→import shutil
+    40→import subprocess
+    41→import sys
+    42→import threading
+    43→import time
+    44→from collections import deque
+    45→from contextlib import asynccontextmanager
+    46→from datetime import datetime
+    47→from pathlib import Path
+    48→from typing import Any, Callable, Dict, List, Optional
+    49→
+    50→from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+    51→from fastapi.staticfiles import StaticFiles
+    52→
+    53→ROOT = Path(__file__).resolve().parent
+    54→sys.path.insert(0, str(ROOT))
+    55→
+    56→APP_VERSION = "1.1.0"
+    57→HOST, PORT = "127.0.0.1", 8765
+    58→PANEL_URL = f"http://{HOST}:{PORT}"
+    59→
+    60→WEB_DIR = ROOT / "web"
+    61→MACROS_DIR = ROOT / "macros"
+    62→TASKS_DIR = ROOT / "tasks"
+    63→SHOTS_DIR = ROOT / "logs" / "shots"
+    64→for _d in (WEB_DIR, MACROS_DIR, TASKS_DIR, SHOTS_DIR):
+    65→    _d.mkdir(parents=True, exist_ok=True)
+    66→
+    67→# --------------------------------------------------------------------------- #
+    68→# ۱) قلاب لاگ — باید «قبل از» ایمپورت ماژول‌های ایجنت نصب شود تا لاگرهای
+    69→#    تازه (browser / desktop / recorder / platforms / …) هم به پنل بروند.
+    70→# --------------------------------------------------------------------------- #
+    71→import core.logger as _cl  # noqa: E402
+    72→
+    73→log = _cl.get_logger("server")
+    74→
+    75→
+    76→class LogHub:
+    77→    """مرکز پخش رویداد به همهٔ کلاینت‌های متصل‌شده با WebSocket."""
+    78→
+    79→    def __init__(self) -> None:
+    80→        self.clients: set = set()
+    81→        self.history: deque = deque(maxlen=300)
+    82→        self._lock = threading.Lock()
+    83→
+    84→    def emit(self, name: str, level: str, msg: str) -> None:
+    85→        item = {
+    86→            "type": "log", "ts": datetime.now().strftime("%H:%M:%S"),
+    87→            "name": name, "level": level, "msg": str(msg)[:2000],
+    88→        }
+    89→        with self._lock:
+    90→            self.history.append(item)
+    91→        self.push(item)
+    92→
+    93→    def push(self, item: dict) -> None:
+    94→        """پخش یک رویداد (log/job/record) به همه — امن از هر نخ."""
+    95→        loop = LOOP
+    96→        if loop is None:
+    97→            return
+    98→        try:
+    99→            asyncio.run_coroutine_threadsafe(self._broadcast(item), loop)
+   100→        except Exception:
+   101→            pass
+   102→
+   103→    async def _broadcast(self, item: dict) -> None:
+   104→        data = json.dumps(item, ensure_ascii=False)
+   105→        dead = []
+   106→        for ws in list(self.clients):
+   107→            try:
+   108→                await ws.send_text(data)
+   109→            except Exception:
+   110→                dead.append(ws)
+   111→        for ws in dead:
+   112→            self.clients.discard(ws)
+   113→
+   114→
+   115→LOG = LogHub()
+   116→LOOP: Optional[asyncio.AbstractEventLoop] = None
+   117→
+   118→
+   119→class _WsHandler(logging.Handler):
+   120→    """هندلر logging که هر رکورد را به پنل می‌فرستد."""
+   121→
+   122→    def emit(self, record: logging.LogRecord) -> None:
+   123→        try:
+   124→            LOG.emit(record.name, record.levelname.lower(), record.getMessage())
+   125→        except Exception:
+   126→            pass
+   127→
+   128→
+   129→_WS_HANDLER = _WsHandler()
+   130→_orig_get_logger = _cl.get_logger
+   131→
+   132→
+   133→def _patched_get_logger(name: str = "parsagent"):
+   134→    lg = _orig_get_logger(name)
+   135→    if _WS_HANDLER not in lg.handlers:
+   136→        lg.addHandler(_WS_HANDLER)
+   137→    return lg
+   138→
+   139→
+   140→_cl.get_logger = _patched_get_logger          # ماژول‌های بعدی نسخهٔ قلاب‌دار را می‌گیرند
+   141→log.addHandler(_WS_HANDLER)
+   142→
+   143→
+   144→def _now_iso() -> str:
+   145→    return datetime.now().isoformat(timespec="seconds")
+   146→
+   147→
+   148→# --------------------------------------------------------------------------- #
+   149→# ۲) ایمپورت ماژول‌های ایجنت — مقاوم به نبودِ بعضی وابستگی‌ها
+   150→# --------------------------------------------------------------------------- #
+   151→try:
+   152→    import pyautogui                                # noqa: E402
+   153→    try:
+   154→        import pyperclip                            # noqa: E402
+   155→    except Exception:
+   156→        pyperclip = None
+   157→    HAVE_INPUT = True
+   158→except Exception:
+   159→    pyautogui = None                                # type: ignore[assignment]
+   160→    pyperclip = None
+   161→    HAVE_INPUT = False
+   162→
+   163→try:
+   164→    import psutil                                   # noqa: E402
+   165→except Exception:
+   166→    psutil = None                                   # type: ignore[assignment]
+   167→
+   168→AGENT_IMPORT_ERROR: Optional[str] = None
+   169→try:
+   170→    from core.browser_engine import BrowserEngine   # noqa: E402
+   171→    from core.notify import notify                  # noqa: E402
+   172→    from core.system_controller import SystemController  # noqa: E402
+   173→    from core.task_engine import TaskEngine         # noqa: E402
+   174→    from platforms import PLATFORMS                 # noqa: E402
+   175→except Exception as _exc:                          # pragma: no cover
+   176→    AGENT_IMPORT_ERROR = str(_exc)
+   177→
+   178→
+   179→def _require_agent() -> None:
+   180→    if AGENT_IMPORT_ERROR:
+   181→        raise RuntimeError(
+   182→            "ماژول‌های ایجنت در دسترس نیستند: " + AGENT_IMPORT_ERROR +
+   183→            " — با دکمهٔ «نصب پیش‌نیازها» در لانچر نصبشان کنید")
+   184→
+   185→
+   186→def _require_input() -> None:
+   187→    if not HAVE_INPUT:
+   188→        raise RuntimeError("pyautogui نصب نیست — از لانچر «نصب پیش‌نیازها» را بزنید")
+   189→
+   190→
+   191→def _require_pynput() -> None:
+   192→    try:
+   193→        import pynput                               # noqa: F401
+   194→    except Exception as exc:
+   195→        raise RuntimeError(f"pynput نصب نیست: {exc}")
+   196→
+   197→
+   198→# --------------------------------------------------------------------------- #
+   199→# ۳) نخِ تک‌نفرهٔ ایجنت — Playwright سینک فقط از داخل همین نخ باید استفاده شود
+   200→# --------------------------------------------------------------------------- #
+   201→class AgentWorker:
+   202→    """صف تک‌نخمی برای هر عملیات ایجنت (مرورگر، تسک، ورود، …).
+   203→
+   204→    sync-API پایتونِ Playwright بین‌نخ امن نیست؛ همهٔ کارهای مرورگری از
+   205→    این نخ عبور می‌کنند تا هیچ‌وقت دو نخ هم‌زمان کانتکست را لمس نکنند.
+   206→    """
+   207→
+   208→    def __init__(self) -> None:
+   209→        self._q: "queue.Queue" = queue.Queue()
+   210→        threading.Thread(target=self._loop, name="parsagent-worker",
+   211→                         daemon=True).start()
+   212→
+   213→    def _loop(self) -> None:
+   214→        while True:
+   215→            fn, args, done, slot = self._q.get()
+   216→            try:
+   217→                slot["result"] = fn(*args)
+   218→            except BaseException as exc:            # noqa: BLE001
+   219→                slot["error"] = exc
+   220→            finally:
+   221→                done.set()
+   222→
+   223→    def run(self, fn: Callable, *args: Any) -> Any:
+   224→        done = threading.Event()
+   225→        slot: Dict[str, Any] = {"result": None, "error": None}
+   226→        self._q.put((fn, args, done, slot))
+   227→        done.wait()
+   228→        if slot["error"] is not None:
+   229→            raise slot["error"]
+   230→        return slot["result"]
+   231→
+   232→
+   233→AGENT = AgentWorker()
+   234→
+   235→# --------------------------------------------------------------------------- #
+   236→# ۴) موتورهای سینگلتون (داخل نخِ AgentWorker ساخته می‌شوند)
+   237→# --------------------------------------------------------------------------- #
+   238→_task_engine = None        # TaskEngine مشترک
+   239→_direct_desktop = None     # SystemController بدون تأخیر انسانی برای کنترل مستقیم
+   240→
+   241→
+   242→def _load_config() -> dict:
+   243→    path = ROOT / "config.json"
+   244→    if not path.exists():
+   245→        return {}
+   246→    try:
+   247→        return json.loads(path.read_text(encoding="utf-8"))
+   248→    except Exception:
+   249→        return {}
+   250→
+   251→
+   252→def _get_engine():
+   253→    """TaskEngine سینگلتون — همیشه از داخل AgentWorker صدا زده شود."""
+   254→    global _task_engine, _direct_desktop
+   255→    if _task_engine is None:
+   256→        _require_agent()
+   257→        config = _load_config()
+   258→        browser = BrowserEngine(config).start(lazy=True)
+   259→        _direct_desktop = SystemController(human=False)
+   260→        desktop_task = SystemController(human=config.get("human", {}).get("enabled", True))
+   261→        _task_engine = TaskEngine(config, lambda: browser, desktop_task, PLATFORMS)
+   262→        LOG.emit("server", "info", "موتور ایجنت آماده شد (مرورگر lazy)")
+   263→    return _task_engine
+   264→
+   265→
+   266→def _browser_state() -> Optional[dict]:
+   267→    if _task_engine is None:
+   268→        return None
+   269→    b = getattr(_task_engine, "_browser", None)
+   270→    if b is None:
+   271→        return None
+   272→    try:
+   273→        return {"channel": b.channel, "profiles": list(b.open_profiles())}
+   274→    except Exception:
+   275→        return None
+   276→
+   277→
+   278→# --------------------------------------------------------------------------- #
+   279→# ۵) سیستم کارها (job) — هر عملیات زمان‌بر یک شناسه می‌گیرد و از WebSocket
+   280→#    وضعیتش پخش می‌شود.
+   281→# --------------------------------------------------------------------------- #
+   282→class _Cancelled(Exception):
+   283→    pass
+   284→
+   285→
+   286→JOBS: Dict[str, dict] = {}
+   287→_JOB_ORDER: List[str] = []
+   288→_JOB_LOCK = threading.Lock()
+   289→_job_seq = itertools.count(1)
+   290→
+   291→
+   292→def _job_cancelled(jid: str) -> bool:
+   293→    with _JOB_LOCK:
+   294→        return bool(JOBS.get(jid, {}).get("cancel"))
+   295→
+   296→
+   297→def _job_public(job: dict, include_result: bool = True) -> dict:
+   298→    base = {
+   299→        "id": job["id"], "kind": job["kind"], "label": job["label"],
+   300→        "status": job["status"], "started_at": job["started_at"],
+   301→        "finished_at": job["finished_at"], "error": job["error"],
+   302→        "cancellable": job["cancellable"],
+   303→    }
+   304→    if include_result and job.get("result") is not None:
+   305→        try:
+   306→            s = json.dumps(job["result"], ensure_ascii=False, default=str)
+   307→            if len(s) < 4000:
+   308→                base["result"] = job["result"]
+   309→            else:
+   310→                base["result_omitted"] = True
+   311→        except Exception:
+   312→            base["result_omitted"] = True
+   313→    return base
+   314→
+   315→
+   316→def _recent_jobs(n: int = 20) -> List[dict]:
+   317→    with _JOB_LOCK:
+   318→        return [JOBS[j] for j in _JOB_ORDER[-n:]][::-1]
+   319→
+   320→
+   321→def _new_job(kind: str, label: str, fn: Callable, *args: Any,
+   322→             via_worker: bool = True, inject_id: bool = False) -> dict:
+   323→    jid = f"j{next(_job_seq)}"
+   324→    job = {
+   325→        "id": jid, "kind": kind, "label": label, "status": "running",
+   326→        "started_at": _now_iso(), "finished_at": None,
+   327→        "result": None, "error": None, "cancel": False,
+   328→        "cancellable": kind == "macro",
+   329→    }
+   330→    with _JOB_LOCK:
+   331→        JOBS[jid] = job
+   332→        _JOB_ORDER.append(jid)
+   333→        while len(_JOB_ORDER) > 80:
+   334→            JOBS.pop(_JOB_ORDER.pop(0), None)
+   335→
+   336→    def _run() -> None:
+   337→        call_args = (jid,) + args if inject_id else args
+   338→        try:
+   339→            if via_worker:
+   340→                job["result"] = AGENT.run(fn, *call_args)
+   341→            else:
+   342→                job["result"] = fn(*call_args)
+   343→            job["status"] = "cancelled" if job["cancel"] else "done"
+   344→        except _Cancelled as exc:
+   345→            job["status"] = "cancelled"
+   346→            job["error"] = str(exc)
+   347→        except Exception as exc:                   # noqa: BLE001
+   348→            job["status"] = "failed"
+   349→            job["error"] = str(exc)[:600]
+   350→            LOG.emit("server", "error", f"کار «{label}» شکست خورد: {str(exc)[:220]}")
+   351→        finally:
+   352→            job["finished_at"] = _now_iso()
+   353→            LOG.push({"type": "job", "job": _job_public(job)})
+   354→
+   355→    threading.Thread(target=_run, daemon=True, name=f"job-{jid}").start()
+   356→    LOG.push({"type": "job", "job": _job_public(job)})
+   357→    return job
+   358→
+   359→
+   360→# --------------------------------------------------------------------------- #
+   361→# ۶) ضبط‌کنندهٔ تحت وب — همان فرمت ماکروی InputRecorder (سازگار با CLI)
+   362→#    F9 = پایان و ذخیره، F10 = لغو — یا از خود پنل.
+   363→# --------------------------------------------------------------------------- #
+   364→class WebRecorder:
+   365→    def __init__(self) -> None:
+   366→        self.events: List[dict] = []
+   367→        self.active = False
+   368→        self.last_macro: Optional[dict] = None
+   369→        self._t0 = 0.0
+   370→        self._last_move = 0.0
+   371→        self._m = None
+   372→        self._k = None
+   373→
+   374→    def _now(self) -> float:
+   375→        return round(time.monotonic() - self._t0, 4)
+   376→
+   377→    def start(self) -> None:
+   378→        if self.active:
+   379→            return
+   380→        from pynput import keyboard, mouse
+   381→        self.events = []
+   382→        self.last_macro = None
+   383→        self._t0 = time.monotonic()
+   384→        self._last_move = 0.0
+   385→        self.active = True
+   386→        self._m = mouse.Listener(on_move=self._om, on_click=self._oc,
+   387→                                 on_scroll=self._os)
+   388→        self._k = keyboard.Listener(on_press=self._ok_press,
+   389→                                    on_release=self._ok_rel)
+   390→        self._m.start()
+   391→        self._k.start()
+   392→        threading.Thread(target=self._tick, daemon=True).start()
+   393→        LOG.emit("recorder", "info", "● ضبط شروع شد — پایان: دکمهٔ پنل یا کلید F9")
+   394→
+   395→    def _tick(self) -> None:
+   396→        while self.active:
+   397→            LOG.push({"type": "record", "active": True,
+   398→                      "count": len(self.events), "duration": self._now()})
+   399→            time.sleep(0.8)
+   400→
+   401→    def _om(self, x: int, y: int) -> None:
+   402→        if not self.active:
+   403→            return
+   404→        t = time.monotonic()
+   405→        if t - self._last_move < 0.025:            # حداکثر ~۴۰ نمونه در ثانیه
+   406→            return
+   407→        self._last_move = t
+   408→        self.events.append({"t": self._now(), "type": "move", "x": x, "y": y})
+   409→
+   410→    def _oc(self, x: int, y: int, button, pressed: bool) -> None:
+   411→        if not self.active:
+   412→            return
+   413→        self.events.append({"t": self._now(), "type": "click", "x": x, "y": y,
+   414→                            "button": button.name, "pressed": pressed})
+   415→
+   416→    def _os(self, x: int, y: int, dx: int, dy: int) -> None:
+   417→        if not self.active:
+   418→            return
+   419→        self.events.append({"t": self._now(), "type": "scroll",
+   420→                            "x": x, "y": y, "dx": dx, "dy": dy})
+   421→
+   422→    @staticmethod
+   423→    def _key_of(key) -> Optional[str]:
+   424→        ch = getattr(key, "char", None)
+   425→        if ch:
+   426→            return ch
+   427→        return getattr(key, "name", None) or str(key)
+   428→
+   429→    def _ok_press(self, key) -> None:
+   430→        if not self.active:
+   431→            return
+   432→        name = getattr(key, "name", None)
+   433→        if name in ("f9", "f10"):                   # کلیدهای کنترلی ضبط
+   434→            self.stop(save=(name == "f9"))
+   435→            return
+   436→        self.events.append({"t": self._now(), "type": "key",
+   437→                            "key": self._key_of(key), "pressed": True})
+   438→
+   439→    def _ok_rel(self, key) -> None:
+   440→        if not self.active:
+   441→            return
+   442→        ch = getattr(key, "char", None)
+   443→        if ch:                                      # برای حروف، press کافی است
+   444→            return
+   445→        self.events.append({"t": self._now(), "type": "key",
+   446→                            "key": self._key_of(key), "pressed": False})
+   447→
+   448→    def stop(self, save: bool = True) -> Optional[dict]:
+   449→        self.active = False
+   450→        for listener in (self._m, self._k):
+   451→            try:
+   452→                listener.stop()
+   453→            except Exception:
+   454→                pass
+   455→        self._m = self._k = None
+   456→        macro = {
+   457→            "meta": {
+   458→                "version": 1,
+   459→                "recorded_at": datetime.now().isoformat(timespec="seconds"),
+   460→                "duration": self._now(),
+   461→                "events": len(self.events),
+   462→            },
+   463→            "events": self.events,
+   464→        }
+   465→        if save and self.events:
+   466→            self.last_macro = macro
+   467→            LOG.emit("recorder", "info",
+   468→                     f"■ ضبط تمام شد — {len(self.events)} رخداد "
+   469→                     f"({macro['meta']['duration']:.1f}s)")
+   470→        else:
+   471→            LOG.emit("recorder", "warning",
+   472→                     f"■ ضبط لغو شد — {len(self.events)} رخداد دور ریخته شد")
+   473→        LOG.push({"type": "record", "active": False,
+   474→                  "count": len(self.events), "duration": macro["meta"]["duration"]})
+   475→        return self.last_macro
+   476→
+   477→    def status(self) -> dict:
+   478→        dur = self._now() if self.active else \
+   479→            (self.last_macro or {}).get("meta", {}).get("duration", 0)
+   480→        return {"active": self.active, "count": len(self.events),
+   481→                "duration": round(dur, 1)}
+   482→
+   483→
+   484→REC = WebRecorder()
+   485→
+   486→
+   487→# --------------------------------------------------------------------------- #
+   488→# ۷) پخش‌کنندهٔ ماکرو — قابل لغو + تایپ فارسی (کلیپ‌بورد)
+   489→# --------------------------------------------------------------------------- #
+   490→_MODIFIERS = {"ctrl_l", "ctrl_r", "alt_l", "alt_r", "alt_gr", "shift_l",
+   491→              "shift_r", "cmd", "cmd_r", "win", "win_l", "win_r"}
+   492→
+   493→_PAGUI_KEY = {
+   494→    "ctrl_l": "ctrl", "ctrl_r": "ctrlright", "alt_l": "alt", "alt_r": "altright",
+   495→    "alt_gr": "altgr", "shift_l": "shift", "shift_r": "shiftright",
+   496→    "cmd": "win", "cmd_r": "winright", "win": "win", "win_l": "winleft",
+   497→    "win_r": "winright", "page_up": "pgup", "page_down": "pgdown",
+   498→    "esc": "escape", "return": "enter", "enter": "enter", "space": "space",
+   499→    "tab": "tab", "backspace": "backspace", "delete": "delete",
+   500→    "insert": "insert", "home": "home", "end": "end", "up": "up",
+   501→    "down": "down", "left": "left", "right": "right",
+   502→    "caps_lock": "capslock", "num_lock": "numlock",
+   503→    "print_screen": "printscreen", "volume_mute": "volumemute",
+   504→    "volume_down": "volumedown", "volume_up": "volumeup",
+   505→}
+   506→for _i in range(1, 13):
+   507→    _PAGUI_KEY[f"f{_i}"] = f"f{_i}"
+   508→
+   509→
+   510→def _type_text_direct(text: str) -> None:
+   511→    """تایپ متن — متن فارسی از طریق کلیپ‌بورد (typewrite فقط ASCII است)."""
+   512→    if not text:
+   513→        return
+   514→    if all(ord(c) < 128 for c in text):
+   515→        pyautogui.typewrite(text, interval=0.012)
+   516→        return
+   517→    if pyperclip is None:
+   518→        raise RuntimeError("برای متن فارسی، پکیج pyperclip لازم است")
+   519→    pyperclip.copy(text)
+   520→    pyautogui.hotkey("ctrl", "v")
+   521→    time.sleep(0.05)
+   522→
+   523→
+   524→def _run_macro(job_id: str, events: List[dict], speed: float, loop: int) -> dict:
+   525→    _require_input()
+   526→    speed = max(0.1, min(float(speed), 10.0))
+   527→    rounds = max(1, int(loop))
+   528→    played = 0
+   529→    for rnd in range(1, rounds + 1):
+   530→        buf = ""
+   531→        prev_t = 0.0
+   532→        for ev in events:
+   533→            if _job_cancelled(job_id):
+   534→                raise _Cancelled(f"ماکرو در دور {rnd} لغو شد")
+   535→            wait = (ev["t"] - prev_t) / speed
+   536→            prev_t = ev["t"]
+   537→            if wait > 0:
+   538→                time.sleep(min(wait, 30.0))        # حداکثر ۳۰ ثانیه مکث در هر گام
+   539→            et = ev.get("type")
+   540→            if et == "move":
+   541→                if buf:
+   542→                    _type_text_direct(buf)
+   543→                    buf = ""
+   544→                pyautogui.moveTo(ev["x"], ev["y"], duration=0)
+   545→            elif et == "click":
+   546→                if buf:
+   547→                    _type_text_direct(buf)
+   548→                    buf = ""
+   549→                if ev.get("pressed"):
+   550→                    pyautogui.click(x=ev["x"], y=ev["y"],
+   551→                                    button=ev.get("button", "left"),
+   552→                                    clicks=1, interval=0.05)
+   553→            elif et == "scroll":
+   554→                if buf:
+   555→                    _type_text_direct(buf)
+   556→                    buf = ""
+   557→                pyautogui.scroll(int(ev.get("dy", 0)))
+   558→            elif et == "key":
+   559→                key = ev.get("key")
+   560→                if not key:
+   561→                    continue
+   562→                if len(key) == 1:                  # کاراکتر معمولی
+   563→                    if ev.get("pressed", True):
+   564→                        buf += key
+   565→                else:                              # کلید ویژه
+   566→                    if buf:
+   567→                        _type_text_direct(buf)
+   568→                        buf = ""
+   569→                    mapped = _PAGUI_KEY.get(key, key)
+   570→                    if key in _MODIFIERS:
+   571→                        if ev.get("pressed", True):
+   572→                            pyautogui.keyDown(mapped)
+   573→                        else:
+   574→                            pyautogui.keyUp(mapped)
+   575→                    elif ev.get("pressed", True):
+   576→                        pyautogui.press(mapped)
+   577→            played += 1
+   578→        if buf:
+   579→            _type_text_direct(buf)
+   580→    return {"events_played": played, "rounds": rounds, "speed": speed}
+   581→
+   582→
+   583→# --------------------------------------------------------------------------- #
+   584→# ۸) کاتالوگ پلتفرم‌ها و اکشن‌ها برای پنل
+   585→# --------------------------------------------------------------------------- #
+   586→PLATFORM_META = {
+   587→    "instagram": {"fa": "اینستاگرام", "color": "#e1306c"},
+   588→    "twitter": {"fa": "توییتر (X)", "color": "#9aa7b8"},
+   589→    "telegram": {"fa": "تلگرام", "color": "#229ed9"},
+   590→    "facebook": {"fa": "فیسبوک", "color": "#1877f2"},
+   591→    "linkedin": {"fa": "لینکدین", "color": "#0a66c2"},
+   592→    "bale": {"fa": "بله", "color": "#20c997"},
+   593→    "rubika": {"fa": "روبیکا", "color": "#e0457b"},
+   594→    "eitaa": {"fa": "ایتا", "color": "#f0a52e"},
+   595→}
+   596→
+   597→_F = {
+   598→    "image": {"key": "image", "fa": "مسیر فایل عکس", "type": "text",
+   599→              "placeholder": "assets/photo.jpg"},
+   600→    "image_opt": {"key": "image", "fa": "مسیر عکس (اختیاری)", "type": "text",
+   601→                  "optional": True, "placeholder": "assets/photo.jpg"},
+   602→    "caption": {"key": "caption", "fa": "کپشن", "type": "textarea",
+   603→                "placeholder": "متن کپشن..."},
+   604→    "text": {"key": "text", "fa": "متن", "type": "textarea", "placeholder": "متن..."},
+   605→    "username": {"key": "username", "fa": "یوزرنیم", "type": "text",
+   606→                 "placeholder": "username"},
+   607→    "message": {"key": "message", "fa": "پیام", "type": "textarea",
+   608→                "placeholder": "متن پیام..."},
+   609→    "chat": {"key": "chat", "fa": "نام چت / مخاطب", "type": "text",
+   610→             "placeholder": "نام ذخیره‌شدهٔ چت"},
+   611→    "channel": {"key": "channel", "fa": "نام کانال", "type": "text",
+   612→                "placeholder": "نام کانال"},
+   613→    "group": {"key": "group", "fa": "نام گروه", "type": "text"},
+   614→    "post_url": {"key": "post_url", "fa": "لینک پست", "type": "text",
+   615→                 "placeholder": "https://..."},
+   616→    "profile_url": {"key": "profile_url", "fa": "لینک پروفایل", "type": "text",
+   617→                    "placeholder": "https://..."},
+   618→    "note": {"key": "note", "fa": "یادداشت (اختیاری)", "type": "textarea",
+   619→             "optional": True},
+   620→    "count": {"key": "count", "fa": "تعداد", "type": "number", "value": 3},
+   621→}
+   622→
+   623→ACTIONS: Dict[str, List[dict]] = {
+   624→    "instagram": [
+   625→        {"id": "post_photo", "fa": "انتشار عکس با کپشن",
+   626→         "fields": [_F["image"], _F["caption"]]},
+   627→        {"id": "upload_story", "fa": "آپلود استوری", "fields": [_F["image"]]},
+   628→        {"id": "send_dm", "fa": "ارسال دایرکت",
+   629→         "fields": [_F["username"], _F["message"]]},
+   630→        {"id": "follow", "fa": "فالو کردن", "fields": [_F["username"]]},
+   631→        {"id": "like_latest", "fa": "لایک پست‌های جدید فید", "fields": [_F["count"]]},
+   632→        {"id": "comment", "fa": "کامنت روی پست",
+   633→         "fields": [_F["post_url"], _F["text"]]},
+   634→    ],
+   635→    "twitter": [
+   636→        {"id": "post_tweet", "fa": "ارسال توییت",
+   637→         "fields": [_F["text"], _F["image_opt"]]},
+   638→        {"id": "send_dm", "fa": "ارسال دایرکت",
+   639→         "fields": [_F["username"], _F["message"]]},
+   640→        {"id": "follow", "fa": "فالو کردن", "fields": [_F["username"]]},
+   641→        {"id": "like", "fa": "لایک توییت", "fields": [_F["post_url"]]},
+   642→        {"id": "retweet", "fa": "ریتوییت", "fields": [_F["post_url"]]},
+   643→    ],
+   644→    "telegram": [
+   645→        {"id": "send_message", "fa": "ارسال پیام", "fields": [_F["chat"], _F["text"]]},
+   646→        {"id": "post_channel", "fa": "ارسال در کانال",
+   647→         "fields": [_F["channel"], _F["text"], _F["image_opt"]]},
+   648→        {"id": "send_group_message", "fa": "پیام در گروه",
+   649→         "fields": [_F["group"], _F["text"]]},
+   650→    ],
+   651→    "facebook": [
+   652→        {"id": "post_status", "fa": "انتشار پست",
+   653→         "fields": [_F["text"], _F["image_opt"]]},
+   654→        {"id": "like_post", "fa": "لایک پست", "fields": [_F["post_url"]]},
+   655→        {"id": "comment", "fa": "کامنت", "fields": [_F["post_url"], _F["text"]]},
+   656→    ],
+   657→    "linkedin": [
+   658→        {"id": "post", "fa": "انتشار پست", "fields": [_F["text"], _F["image_opt"]]},
+   659→        {"id": "connect", "fa": "درخواست اتصال",
+   660→         "fields": [_F["profile_url"], _F["note"]]},
+   661→        {"id": "send_dm", "fa": "پیام مستقیم",
+   662→         "fields": [_F["profile_url"], _F["message"]]},
+   663→    ],
+   664→    "bale": [
+   665→        {"id": "send_message", "fa": "ارسال پیام", "fields": [_F["chat"], _F["text"]]},
+   666→        {"id": "post_channel", "fa": "ارسال در کانال",
+   667→         "fields": [_F["channel"], _F["text"]]},
+   668→    ],
+   669→    "rubika": [
+   670→        {"id": "send_message", "fa": "ارسال پیام", "fields": [_F["chat"], _F["text"]]},
+   671→        {"id": "post_channel", "fa": "ارسال در کانال",
+   672→         "fields": [_F["channel"], _F["text"]]},
+   673→    ],
+   674→    "eitaa": [
+   675→        {"id": "send_message", "fa": "ارسال پیام", "fields": [_F["chat"], _F["text"]]},
+   676→        {"id": "post_channel", "fa": "ارسال در کانال",
+   677→         "fields": [_F["channel"], _F["text"]]},
+   678→    ],
+   679→}
+   680→
+   681→
+   682→def _platform_catalog() -> List[dict]:
+   683→    out = []
+   684→    open_profiles = (_browser_state() or {}).get("profiles", [])
+   685→    if AGENT_IMPORT_ERROR is None:
+   686→        for pid, cls in PLATFORMS.items():
+   687→            meta = PLATFORM_META.get(pid, {"fa": pid, "color": "#888"})
+   688→            out.append({
+   689→                "id": pid, "fa": meta["fa"], "color": meta["color"],
+   690→                "url": getattr(cls, "base_url", ""),
+   691→                "open": pid in open_profiles,
+   692→                "actions": ACTIONS.get(pid, []),
+   693→            })
+   694→    else:                                          # حالت نیمه‌قابل‌استفاده
+   695→        for pid, meta in PLATFORM_META.items():
+   696→            out.append({"id": pid, "fa": meta["fa"], "color": meta["color"],
+   697→                        "url": "", "open": False, "actions": ACTIONS.get(pid, [])})
+   698→    return out
+   699→
+   700→
+   701→def _modules_state() -> dict:
+   702→    mods = ["pyautogui", "pynput", "playwright", "rich", "plyer",
+   703→            "psutil", "pyperclip", "PIL"]
+   704→    out = {}
+   705→    for m in mods:
+   706→        try:
+   707→            out[m] = importlib.util.find_spec(m) is not None
+   708→        except Exception:
+   709→            out[m] = m in sys.modules
+   710→    out["fastapi"] = True
+   711→    out["uvicorn"] = True
+   712→    return out
+   713→
+   714→
+   715→# --------------------------------------------------------------------------- #
+   716→# ۹) عملیات پلتفرم (همه از داخل نخ ایجنت)
+   717→# --------------------------------------------------------------------------- #
+   718→def _platform_open(platform: str) -> dict:
+   719→    eng = _get_engine()
+   720→    if platform not in PLATFORMS:
+   721→        raise ValueError(f"پلتفرم ناشناخته: {platform}")
+   722→    mod = eng.platform(platform)                    # پروفایل ماندگار + لانچ تنبل
+   723→    page = getattr(mod, "_page", None)
+   724→    if page is not None:
+   725→        try:
+   726→            if not page.is_closed():
+   727→                page.goto(mod.base_url, wait_until="domcontentloaded",
+   728→                          timeout=45_000)
+   729→                try:
+   730→                    page.bring_to_front()
+   731→                except Exception:
+   732→                    pass
+   733→                return {"already_open": True, "url": page.url}
+   734→        except Exception:
+   735→            pass
+   736→    page = mod.open()                               # صفحهٔ تازه + رفتن به سایت
+   737→    return {"already_open": False, "url": page.url,
+   738→            "channel": eng._browser.channel}
+   739→
+   740→
+   741→def _platform_close(platform: str) -> dict:
+   742→    eng = _get_engine()
+   743→    browser = getattr(eng, "_browser", None)
+   744→    closed = browser.close_profile(platform) if browser else False
+   745→    getattr(eng, "_platform_instances", {}).pop(platform, None)
+   746→    return {"platform": platform, "closed": closed}
+   747→
+   748→
+   749→def _platform_logged_in(platform: str) -> dict:
+   750→    eng = _get_engine()
+   751→    mod = eng.platform(platform)
+   752→    try:
+   753→        ok = bool(mod.is_logged_in())
+   754→    except Exception as exc:
+   755→        return {"platform": platform, "logged_in": False, "error": str(exc)[:200]}
+   756→    return {"platform": platform, "logged_in": ok}
+   757→
+   758→
+   759→def _platform_screenshot(platform: str) -> dict:
+   760→    eng = _get_engine()
+   761→    mod = getattr(eng, "_platform_instances", {}).get(platform) \
+   762→        or eng.platform(platform)
+   763→    page = getattr(mod, "_page", None)
+   764→    if page is None:
+   765→        raise RuntimeError("صفحه‌ای باز نیست — اول پلتفرم را باز کنید")
+   766→    if page.is_closed():
+   767→        raise RuntimeError("صفحه بسته شده — دوباره پلتفرم را باز کنید")
+   768→    path = Path(eng._browser.screenshot(page, platform))
+   769→    data = path.read_bytes()
+   770→    return {"image": base64.b64encode(data).decode(),
+   771→            "path": str(path), "url": page.url}
+   772→
+   773→
+   774→# --------------------------------------------------------------------------- #
+   775→# ۱۰) فایل‌های تسک و ماکرو
+   776→# --------------------------------------------------------------------------- #
+   777→def _safe_name(name: str) -> str:
+   778→    safe = "".join(c for c in str(name).strip()
+   779→                   if c.isalnum() or c in " _-") or "macro"
+   780→    return safe[:60]
+   781→
+   782→
+   783→def _safe_file(name: str) -> Path:
+   784→    if "/" in name or "\\" in name or ".." in name:
+   785→        raise HTTPException(400, "نام فایل نامعتبر است")
+   786→    path = TASKS_DIR / name
+   787→    if not str(path).startswith(str(TASKS_DIR)):
+   788→        raise HTTPException(400, "نام فایل نامعتبر است")
+   789→    return path
+   790→
+   791→
+   792→def _tasks_list() -> List[dict]:
+   793→    out = []
+   794→    for f in sorted(TASKS_DIR.glob("*.json")):
+   795→        item = {"file": f.name, "names": [], "description": "", "count": 0}
+   796→        try:
+   797→            data = json.loads(f.read_text(encoding="utf-8"))
+   798→            tasks = data.get("tasks", [data]) if isinstance(data, dict) else []
+   799→            names = [t.get("name", "?") for t in tasks if isinstance(t, dict)]
+   800→            item["names"] = names
+   801→            item["count"] = len(names)
+   802→            item["description"] = data.get("description", "") if isinstance(data, dict) else ""
+   803→        except Exception:
+   804→            item["description"] = "خطای JSON"
+   805→        out.append(item)
+   806→    return out
+   807→
+   808→
+   809→def _macros_list() -> List[dict]:
+   810→    out = []
+   811→    for f in sorted(MACROS_DIR.glob("*.json")):
+   812→        try:
+   813→            data = json.loads(f.read_text(encoding="utf-8"))
+   814→            meta = data.get("meta", {})
+   815→            out.append({"name": f.stem, "file": f.name,
+   816→                        "events": len(data.get("events", [])),
+   817→                        "duration": meta.get("duration", 0),
+   818→                        "recorded_at": meta.get("recorded_at", "")})
+   819→        except Exception:
+   820→            continue
+   821→    return out
+   822→
+   823→
+   824→# --------------------------------------------------------------------------- #
+   825→# ۱۱) FastAPI app
+   826→# --------------------------------------------------------------------------- #
+   827→@asynccontextmanager
+   828→async def _lifespan(app: FastAPI):
+   829→    global LOOP
+   830→    LOOP = asyncio.get_running_loop()
+   831→    LOG.emit("server", "info",
+   832→             f"🚀 سرور پنل پارس‌ایجنت v{APP_VERSION} روشن شد — {PANEL_URL}")
+   833→    if AGENT_IMPORT_ERROR:
+   834→        LOG.emit("server", "warning",
+   835→                 f"بعضی ماژول‌های ایجنت در دسترس نیستند: {AGENT_IMPORT_ERROR[:160]}")
+   836→    yield
+   837→    try:
+   838→        if REC.active:
+   839→            REC.stop(save=False)
+   840→    except Exception:
+   841→        pass
+   842→    try:
+   843→        if _task_engine is not None:
+   844→            AGENT.run(_task_engine.finish)
+   845→    except Exception:
+   846→        pass
+   847→    LOG.emit("server", "info", "سرور پنل خاموش شد")
+   848→
+   849→
+   850→app = FastAPI(title="ParsAgent Panel", version=APP_VERSION, lifespan=_lifespan)
+   851→
+   852→
+   853→# ---------- سلامت و وضعیت کلی ----------
+   854→@app.get("/api/health")
+   855→async def health():
+   856→    return {"ok": True, "version": APP_VERSION, "time": _now_iso(),
+   857→            "agent_ok": AGENT_IMPORT_ERROR is None,
+   858→            "modules": _modules_state(),
+   859→            "recording": REC.status()["active"],
+   860→            "browser": _browser_state(),
+   861→            "url": PANEL_URL}
+   862→
+   863→
+   864→@app.get("/api/state")
+   865→async def panel_state():
+   866→    return {
+   867→        "version": APP_VERSION,
+   868→        "agent_ok": AGENT_IMPORT_ERROR is None,
+   869→        "modules": _modules_state(),
+   870→        "platforms": _platform_catalog(),
+   871→        "browser": _browser_state(),
+   872→        "recording": REC.status(),
+   873→        "macros": _macros_list(),
+   874→        "task_files": _tasks_list(),
+   875→        "jobs": [_job_public(j, include_result=False) for j in _recent_jobs(12)],
+   876→    }
+   877→
+   878→
+   879→# ---------- پلتفرم‌ها ----------
+   880→@app.post("/api/platform/open")
+   881→async def platform_open(payload: dict = Body(...)):
+   882→    pid = payload.get("platform")
+   883→    if not pid:
+   884→        raise HTTPException(400, "platform الزامی است")
+   885→    job = _new_job("platform", f"🌐 باز کردن {PLATFORM_META.get(pid, {}).get('fa', pid)}",
+   886→                   _platform_open, pid)
+   887→    return _job_public(job)
+   888→
+   889→
+   890→@app.post("/api/platform/close")
+   891→async def platform_close(payload: dict = Body(...)):
+   892→    pid = payload.get("platform")
+   893→    if not pid:
+   894→        raise HTTPException(400, "platform الزامی است")
+   895→    job = _new_job("platform", f"⛔ بستن {PLATFORM_META.get(pid, {}).get('fa', pid)}",
+   896→                   _platform_close, pid)
+   897→    return _job_public(job)
+   898→
+   899→
+   900→@app.post("/api/platform/logged_in")
+   901→async def platform_logged_in(payload: dict = Body(...)):
+   902→    pid = payload.get("platform")
+   903→    if not pid:
+   904→        raise HTTPException(400, "platform الزامی است")
+   905→    job = _new_job("platform",
+   906→                   f"🔑 بررسی ورود {PLATFORM_META.get(pid, {}).get('fa', pid)}",
+   907→                   _platform_logged_in, pid)
+   908→    return _job_public(job)
+   909→
+   910→
+   911→@app.post("/api/platform/screenshot")
+   912→async def platform_screenshot(payload: dict = Body(...)):
+   913→    pid = payload.get("platform")
+   914→    if not pid:
+   915→        raise HTTPException(400, "platform الزامی است")
+   916→    job = _new_job("screenshot",
+   917→                   f"📸 اسکرین‌شات صفحهٔ {PLATFORM_META.get(pid, {}).get('fa', pid)}",
+   918→                   _platform_screenshot, pid)
+   919→    return _job_public(job)
+   920→
+   921→
+   922→# ---------- اجرای اکشن پلتفرم ----------
+   923→@app.post("/api/action/run")
+   924→async def action_run(payload: dict = Body(...)):
+   925→    pid, action = payload.get("platform"), payload.get("action")
+   926→    args = payload.get("args") or {}
+   927→    if not pid or not action:
+   928→        raise HTTPException(400, "platform و action الزامی‌اند")
+   929→
+   930→    def _run():
+   931→        eng = _get_engine()
+   932→        mod = eng.platform(pid)
+   933→        method = getattr(mod, action, None)
+   934→        if method is None:
+   935→            raise ValueError(f"اکشن ناشناخته: {pid}.{action}")
+   936→        method(**args)
+   937→        return {"ok": True}
+   938→
+   939→    label = f"⚡ {PLATFORM_META.get(pid, {}).get('fa', pid)} · {action}"
+   940→    job = _new_job("action", label, _run)
+   941→    return _job_public(job)
+   942→
+   943→
+   944→# ---------- وظایف ----------
+   945→@app.get("/api/tasks")
+   946→async def tasks_index():
+   947→    return _tasks_list()
+   948→
+   949→
+   950→@app.get("/api/tasks/content")
+   951→async def task_content(file: str):
+   952→    path = _safe_file(file)
+   953→    if not path.exists():
+   954→        raise HTTPException(404, "فایل پیدا نشد")
+   955→    return {"file": file, "content": path.read_text(encoding="utf-8")}
+   956→
+   957→
+   958→@app.post("/api/tasks/save")
+   959→async def task_save(payload: dict = Body(...)):
+   960→    fname = payload.get("file") or "my-task.json"
+   961→    if not fname.endswith(".json"):
+   962→        fname += ".json"
+   963→    path = _safe_file(fname)
+   964→    content = payload.get("content", "")
+   965→    try:
+   966→        json.loads(content)
+   967→    except Exception as exc:
+   968→        raise HTTPException(400, f"JSON نامعتبر: {exc}")
+   969→    path.write_text(content, encoding="utf-8")
+   970→    LOG.emit("server", "info", f"تسک ذخیره شد → tasks/{fname}")
+   971→    return {"ok": True, "file": fname}
+   972→
+   973→
+   974→@app.post("/api/tasks/load_samples")
+   975→async def tasks_load_samples():
+   976→    """ساخت tasks/examples.json در صورت نبود (از نسخهٔ داخلی)."""
+   977→    path = TASKS_DIR / "examples.json"
+   978→    if path.exists():
+   979→        return {"ok": True, "created": False, "file": "examples.json"}
+   980→    data = json.loads((ROOT / "tasks" / "examples.json").read_text(encoding="utf-8")) \
+   981→        if (ROOT / "tasks" / "examples.json").exists() else {"tasks": []}
+   982→    if not data.get("tasks"):
+   983→        data = {"tasks": [{
+   984→            "name": "hello_panel",
+   985→            "description": "نمونهٔ ساخته‌شده از پنل — یک اعلان ویندوز",
+   986→            "steps": [{"type": "notify", "message": "سلام از پنل پارس‌ایجنت 👋"}],
+   987→        }]}
+   988→    path.write_text(json.dumps(data, ensure_ascii=False, indent=2),
+   989→                    encoding="utf-8")
+   990→    return {"ok": True, "created": True, "file": "examples.json"}
+   991→
+   992→
+   993→@app.post("/api/tasks/run")
+   994→async def task_run(payload: dict = Body(...)):
+   995→    if payload.get("file"):
+   996→        path = _safe_file(payload["file"])
+   997→        if not path.exists():
+   998→            raise HTTPException(404, "فایل تسک پیدا نشد")
+   999→        data = json.loads(path.read_text(encoding="utf-8"))
+  1000→        tasks = data.get("tasks", [data]) if "tasks" in data else [data]
+  1001→        if payload.get("name"):
+  1002→            tasks = [t for t in tasks if t.get("name") == payload["name"]] or tasks[:1]
+  1003→        label = f"⚙ {payload['file']}" + (f" · {payload['name']}" if payload.get("name") else "")
+  1004→    elif payload.get("task"):
+  1005→        tasks = [payload["task"]]
+  1006→        label = f"⚙ {tasks[0].get('name', 'تسک')}"
+  1007→    else:
+  1008→        raise HTTPException(400, "یا file بده یا task")
+  1009→
+  1010→    for t in tasks:                                 # متغیرهای تعاملی از پنل نه
+  1011→        t.pop("interactive_vars", None)
+  1012→
+  1013→    def _run_all():
+  1014→        eng = _get_engine()
+  1015→        return [eng.run(t) for t in tasks]
+  1016→
+  1017→    job = _new_job("task", label, _run_all)
+  1018→    return _job_public(job)
+  1019→
+  1020→
+  1021→# ---------- ضبط و ماکرو ----------
+  1022→@app.post("/api/record/start")
+  1023→async def record_start():
+  1024→    try:
+  1025→        _require_pynput()
+  1026→    except RuntimeError as exc:
+  1027→        raise HTTPException(503, str(exc))
+  1028→    REC.start()
+  1029→    return {"recording": True}
+  1030→
+  1031→
+  1032→@app.post("/api/record/stop")
+  1033→async def record_stop():
+  1034→    macro = REC.stop()
+  1035→    return {"recording": False,
+  1036→            "macro": (macro or {}).get("meta", {})}
+  1037→
+  1038→
+  1039→@app.get("/api/record/status")
+  1040→async def record_status():
+  1041→    return REC.status()
+  1042→
+  1043→
+  1044→@app.get("/api/macros")
+  1045→async def macros_index():
+  1046→    return _macros_list()
+  1047→
+  1048→
+  1049→@app.post("/api/macros/save")
+  1050→async def macros_save(payload: dict = Body(...)):
+  1051→    if REC.active:
+  1052→        REC.stop()
+  1053→    macro = REC.last_macro
+  1054→    if not macro or not macro.get("events"):
+  1055→        raise HTTPException(400, "رویدادی برای ذخیره نیست — اول ضبط کن")
+  1056→    name = _safe_name(payload.get("name") or
+  1057→                      f"macro-{datetime.now():%Y%m%d-%H%M%S}")
+  1058→    (MACROS_DIR / f"{name}.json").write_text(
+  1059→        json.dumps(macro, ensure_ascii=False, indent=2), encoding="utf-8")
+  1060→    LOG.emit("recorder", "info", f"ماکرو «{name}» ذخیره شد "
+  1061→                                 f"({len(macro['events'])} رخداد)")
+  1062→    return {"ok": True, "name": name}
+  1063→
+  1064→
+  1065→@app.post("/api/macros/delete")
+  1066→async def macros_delete(payload: dict = Body(...)):
+  1067→    name = _safe_name(payload.get("name") or "")
+  1068→    path = MACROS_DIR / f"{name}.json"
+  1069→    if not path.exists():
+  1070→        raise HTTPException(404, "ماکرو پیدا نشد")
+  1071→    path.unlink()
+  1072→    LOG.emit("recorder", "info", f"ماکرو «{name}» حذف شد")
+  1073→    return {"ok": True}
+  1074→
+  1075→
+  1076→@app.post("/api/macros/play")
+  1077→async def macros_play(payload: dict = Body(...)):
+  1078→    name = _safe_name(payload.get("name") or "")
+  1079→    path = MACROS_DIR / f"{name}.json"
+  1080→    if not path.exists():
+  1081→        raise HTTPException(404, "ماکرو پیدا نشد")
+  1082→    try:
+  1083→        macro = json.loads(path.read_text(encoding="utf-8"))
+  1084→        events = macro.get("events", [])
+  1085→    except Exception as exc:
+  1086→        raise HTTPException(400, f"فایل ماکرو خراب است: {exc}")
+  1087→    if not events:
+  1088→        raise HTTPException(400, "این ماکرو خالی است")
+  1089→    speed = float(payload.get("speed", 1.0))
+  1090→    loop = int(payload.get("loop", 1))
+  1091→    job = _new_job("macro", f"▶ پخش ماکرو «{name}» ×{speed:g}",
+  1092→                   _run_macro, events, speed, loop,
+  1093→                   via_worker=False, inject_id=True)
+  1094→    return _job_public(job)
+  1095→
+  1096→
+  1097→# ---------- کارها ----------
+  1098→@app.get("/api/jobs")
+  1099→async def jobs_index():
+  1100→    return [_job_public(j, include_result=False) for j in _recent_jobs(20)]
+  1101→
+  1102→
+  1103→@app.get("/api/jobs/{jid}")
+  1104→async def job_get(jid: str):
+  1105→    with _JOB_LOCK:
+  1106→        job = JOBS.get(jid)
+  1107→    if not job:
+  1108→        raise HTTPException(404, "کار پیدا نشد")
+  1109→    return _job_public(job, include_result=True)
+  1110→
+  1111→
+  1112→@app.post("/api/jobs/cancel")
+  1113→async def job_cancel(payload: dict = Body(...)):
+  1114→    jid = payload.get("id")
+  1115→    with _JOB_LOCK:
+  1116→        job = JOBS.get(jid or "")
+  1117→        if not job:
+  1118→            raise HTTPException(404, "کار پیدا نشد")
+  1119→        if not job["cancellable"]:
+  1120→            raise HTTPException(400, "این کار قابل لغو نیست (تسک‌ها تا پایان اجرا می‌شوند)")
+  1121→        job["cancel"] = True
+  1122→    return {"ok": True}
+  1123→
+  1124→
+  1125→# ---------- سیستم و دسکتاپ ----------
+  1126→def _desktop_screenshot() -> dict:
+  1127→    _require_input()
+  1128→    img = pyautogui.screenshot()
+  1129→    SHOTS_DIR.mkdir(parents=True, exist_ok=True)
+  1130→    path = SHOTS_DIR / f"desktop_{datetime.now():%Y%m%d_%H%M%S}.png"
+  1131→    img.save(path)
+  1132→    buf = io.BytesIO()
+  1133→    img.convert("RGB").save(buf, format="JPEG", quality=68)
+  1134→    return {"width": img.width, "height": img.height,
+  1135→            "image": base64.b64encode(buf.getvalue()).decode(),
+  1136→            "path": str(path)}
+  1137→
+  1138→
+  1139→@app.post("/api/system/screenshot")
+  1140→async def system_screenshot():
+  1141→    try:
+  1142→        return await asyncio.to_thread(_desktop_screenshot)
+  1143→    except RuntimeError as exc:
+  1144→        raise HTTPException(503, str(exc))
+  1145→
+  1146→
+  1147→@app.post("/api/system/mouse")
+  1148→async def system_mouse(payload: dict = Body(...)):
+  1149→    if not HAVE_INPUT:
+  1150→        raise HTTPException(503, "pyautogui نصب نیست")
+  1151→
+  1152→    def _do():
+  1153→        act = payload.get("action", "click")
+  1154→        x, y = payload.get("x"), payload.get("y")
+  1155→        btn = payload.get("button", "left")
+  1156→        if act == "move":
+  1157→            pyautogui.moveTo(int(x or 0), int(y or 0),
+  1158→                              duration=float(payload.get("duration", 0.15)))
+  1159→        elif act == "click":
+  1160→            pyautogui.click(x=x, y=y, button=btn,
+  1161→                            clicks=int(payload.get("clicks", 1)), interval=0.08)
+  1162→        elif act == "double":
+  1163→            pyautogui.doubleClick(x=x, y=y)
+  1164→        elif act == "right":
+  1165→            pyautogui.rightClick(x=x, y=y)
+  1166→        elif act == "middle":
+  1167→            pyautogui.middleClick(x=x, y=y)
+  1168→        elif act == "drag":
+  1169→            pyautogui.dragTo(int(x or 0), int(y or 0),
+  1170→                             duration=float(payload.get("duration", 0.6)),
+  1171→                             button=btn)
+  1172→        elif act == "scroll":
+  1173→            pyautogui.scroll(int(payload.get("clicks", -3)))
+  1174→        elif act == "position":
+  1175→            p = pyautogui.position()
+  1176→            return {"x": p.x, "y": p.y}
+  1177→        else:
+  1178→            raise ValueError(f"action نامعتبر: {act}")
+  1179→        p = pyautogui.position()
+  1180→        return {"x": p.x, "y": p.y}
+  1181→
+  1182→    return await asyncio.to_thread(_do)
+  1183→
+  1184→
+  1185→@app.post("/api/system/keyboard")
+  1186→async def system_keyboard(payload: dict = Body(...)):
+  1187→    if not HAVE_INPUT:
+  1188→        raise HTTPException(503, "pyautogui نصب نیست")
+  1189→
+  1190→    def _do():
+  1191→        act = payload.get("action", "type")
+  1192→        if act == "type":
+  1193→            _type_text_direct(payload.get("text", ""))
+  1194→        elif act == "press":
+  1195→            key = payload.get("key", "enter")
+  1196→            pyautogui.press(_PAGUI_KEY.get(key, key),
+  1197→                            presses=int(payload.get("times", 1)), interval=0.12)
+  1198→        elif act == "hotkey":
+  1199→            keys = payload.get("keys") or []
+  1200→            if not keys:
+  1201→                raise ValueError("keys خالی است")
+  1202→            pyautogui.hotkey(*[_PAGUI_KEY.get(k, k) for k in keys])
+  1203→        else:
+  1204→            raise ValueError(f"action نامعتبر: {act}")
+  1205→        return {"ok": True}
+  1206→
+  1207→    try:
+  1208→        return await asyncio.to_thread(_do)
+  1209→    except RuntimeError as exc:
+  1210→        raise HTTPException(503, str(exc))
+  1211→
+  1212→
+  1213→def _sysinfo() -> dict:
+  1214→    info = {
+  1215→        "computer": _platform.node() or "-",
+  1216→        "os": f"{_platform.system()} {_platform.release()}",
+  1217→        "processor": _platform.processor() or _platform.machine(),
+  1218→        "python": _platform.python_version(),
+  1219→        "cpu_cores": os.cpu_count(),
+  1220→        "agent_ok": AGENT_IMPORT_ERROR is None,
+  1221→    }
+  1222→    if psutil is not None:
+  1223→        vm = psutil.virtual_memory()
+  1224→        info.update({
+  1225→            "ram_total_gb": round(vm.total / 1024 ** 3, 1),
+  1226→            "ram_used_gb": round(vm.used / 1024 ** 3, 1),
+  1227→            "ram_percent": vm.percent,
+  1228→            "cpu_percent": psutil.cpu_percent(interval=0.4),
+  1229→        })
+  1230→        try:
+  1231→            du = shutil.disk_usage(str(Path(os.path.abspath(os.sep))))
+  1232→            info.update({"disk_total_gb": round(du.total / 1024 ** 3, 1),
+  1233→                         "disk_free_gb": round(du.free / 1024 ** 3, 1)})
+  1234→        except Exception:
+  1235→            pass
+  1236→    return info
+  1237→
+  1238→
+  1239→@app.get("/api/system/info")
+  1240→async def system_info():
+  1241→    return await asyncio.to_thread(_sysinfo)
+  1242→
+  1243→
+  1244→@app.post("/api/system/notify")
+  1245→async def system_notify(payload: dict = Body(...)):
+  1246→    title = payload.get("title") or "ParsAgent"
+  1247→    message = payload.get("message") or ""
+  1248→    if not message:
+  1249→        raise HTTPException(400, "پیام خالی است")
+  1250→    try:
+  1251→        notify(title, message)
+  1252→        return {"ok": True}
+  1253→    except Exception as exc:
+  1254→        raise HTTPException(500, f"اعلان نمایش داده نشد: {exc}")
+  1255→
+  1256→
+  1257→@app.post("/api/system/open")
+  1258→async def system_open(payload: dict = Body(...)):
+  1259→    target = (payload.get("target") or "").strip()
+  1260→    if not target:
+  1261→        raise HTTPException(400, "مسیر/آدرس خالی است")
+  1262→    try:
+  1263→        if os.name == "nt":
+  1264→            os.startfile(target)                     # noqa: S606
+  1265→        else:
+  1266→            subprocess.Popen(["xdg-open", target])
+  1267→        return {"ok": True}
+  1268→    except Exception as exc:
+  1269→        raise HTTPException(500, f"باز نشد: {exc}")
+  1270→
+  1271→
+  1272→@app.post("/api/system/cmd")
+  1273→async def system_cmd(payload: dict = Body(...)):
+  1274→    cmd = (payload.get("cmd") or "").strip()
+  1275→    if not cmd:
+  1276→        raise HTTPException(400, "دستور خالی است")
+  1277→
+  1278→    def _do():
+  1279→        p = subprocess.run(cmd, shell=True, capture_output=True,
+  1280→                            timeout=min(int(payload.get("timeout", 60)), 300))
+  1281→        out = (p.stdout or b"").decode("utf-8", "replace")
+  1282→        err = (p.stderr or b"").decode("utf-8", "replace")
+  1283→        return {"code": p.returncode,
+  1284→                "output": (out + (("\n" + err) if err else "")).strip()[:20000]}
+  1285→
+  1286→    return await asyncio.to_thread(_do)
+  1287→
+  1288→
+  1289→@app.post("/api/system/lock")
+  1290→async def system_lock():
+  1291→    try:
+  1292→        if os.name == "nt":
+  1293→            import ctypes
+  1294→            ctypes.windll.user32.LockWorkStation()
+  1295→            return {"ok": True}
+  1296→        raise RuntimeError("فقط روی ویندوز")
+  1297→    except Exception as exc:
+  1298→        raise HTTPException(500, f"قفل نشد: {exc}")
+  1299→
+  1300→
+  1301→@app.post("/api/system/shutdown")
+  1302→async def system_shutdown(payload: dict = Body(...)):
+  1303→    delay_min = max(int(payload.get("delay_min", 1)), 1)
+  1304→    p = subprocess.run(["shutdown", "/s", "/t", str(delay_min * 60)],
+  1305→                       capture_output=True)
+  1306→    LOG.emit("server", "warning",
+  1307→             f"⏻ خاموشی سیستم تا {delay_min} دقیقهٔ دیگر زمان‌بندی شد")
+  1308→    return {"ok": p.returncode == 0, "delay_min": delay_min}
+  1309→
+  1310→
+  1311→@app.post("/api/system/abort_shutdown")
+  1312→async def system_abort_shutdown():
+  1313→    p = subprocess.run(["shutdown", "/a"], capture_output=True)
+  1314→    LOG.emit("server", "info", "خاموشی لغو شد")
+  1315→    return {"ok": p.returncode == 0}
+  1316→
+  1317→
+  1318→# ---------- تنظیمات ----------
+  1319→@app.get("/api/config")
+  1320→async def config_get():
+  1321→    path = ROOT / "config.json"
+  1322→    content = path.read_text(encoding="utf-8") if path.exists() else "{}"
+  1323→    return {"content": content, "path": str(path)}
+  1324→
+  1325→
+  1326→@app.post("/api/config/save")
+  1327→async def config_save(payload: dict = Body(...)):
+  1328→    content = payload.get("content", "")
+  1329→    try:
+  1330→        json.loads(content)
+  1331→    except Exception as exc:
+  1332→        raise HTTPException(400, f"JSON نامعتبر: {exc}")
+  1333→    (ROOT / "config.json").write_text(content, encoding="utf-8")
+  1334→    LOG.emit("server", "info", "config.json ذخیره شد "
+  1335→             "(برای اعمال کامل روی موتورهای باز، سرور را ری‌استارت کنید)")
+  1336→    return {"ok": True}
+  1337→
+  1338→
+  1339→# ---------- WebSocket لاگ زنده ----------
+  1340→@app.websocket("/ws/logs")
+  1341→async def ws_logs(ws: WebSocket):
+  1342→    await ws.accept()
+  1343→    LOG.clients.add(ws)
+  1344→    try:
+  1345→        await ws.send_text(json.dumps({
+  1346→            "type": "hello", "version": APP_VERSION,
+  1347→            "logs": list(LOG.history)[-120:],
+  1348→            "jobs": [_job_public(j, include_result=False)
+  1349→                     for j in _recent_jobs(15)],
+  1350→            "recording": REC.status(),
+  1351→        }, ensure_ascii=False))
+  1352→        while True:
+  1353→            await ws.receive_text()                 # keep-alive
+  1354→    except WebSocketDisconnect:
+  1355→        pass
+  1356→    except Exception:
+  1357→        pass
+  1358→    finally:
+  1359→        LOG.clients.discard(ws)
+  1360→
+  1361→
+  1362→# ---------- فایل‌های پنل (web/index.html) ----------
+  1363→app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
+  1364→
+  1365→
+  1366→# --------------------------------------------------------------------------- #
+  1367→# اجرای مستقیم: python server.py
+  1368→# --------------------------------------------------------------------------- #
+  1369→if __name__ == "__main__":
+  1370→    import uvicorn
+  1371→    uvicorn.run(app, host=HOST, port=PORT, log_level="info")
+  1372→

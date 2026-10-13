@@ -1,0 +1,722 @@
+     1→# -*- coding: utf-8 -*-
+     2→"""
+     3→ParsAgent — پنل مدیریت محلی (بک‌اند)
+     4→اجرا:  python panel_server.py
+     5→نیازمندی‌ها:  pip install fastapi uvicorn python-multipart playwright
+     6→
+     7→تغییرهای این نسخه:
+     8→  - اجرای سریع: نتیجه از طریق state برگردانده می‌شود؛ فرم هرگز بازسازی خودکار نمی‌شود
+     9→  - آپلود رسانه از سیستم (پوشه media) برای انتشار عکس/استوری/پست
+    10→  - زمان‌بند کامل: هر X دقیقه / ساعت‌های مشخص روزانه / یک‌بار
+    11→  - ضبط ماکرو فقط با دکمه «شروع ضبط» آغاز می‌شود — با بالا آمدن سرور شروع نمی‌شود
+    12→  - تست بات + تنظیمات ضد شناسایی + ذخیره نام کاربری/رمز + حل کپچا
+    13→  - ۲.۱.۰: لانچر — رفع گیرکردن روی «در حال راه‌اندازی سرور» (بررسی سلامت
+    14→    بدون پروکسی/VPN + نمایش زندهٔ خطاهای سرور در لاگ لانچر)
+    15→  - ۲.۲.۰: ضد شناسایی v3 «پیشرفته» بر اساس متد روز دنیا:
+    16→    اثر انگشت پایدار per-profile (نویز تصادفیِ هر بار خودش پرچم قرمز است!)،
+    17→    ۴ گروه تنظیم (هویت مرورگر / اثر انگشت دیجیتال / رفتار انسانی / هر پلتفرم)،
+    18→    ماژول‌های جدید: window.chrome کامل، نویز پایدار Audio، ماسک فونت،
+    19→    مشخصات سخت‌افزار واقع‌نما، شیلد WebRTC، کلاک native بودن توابع،
+    20→    حرکت موس منحنی، اسکرول تصادفی، سرعت تایپ، مکث شبانه
+    21→  - ۲.۲.۰: زمان‌بندی پخش ماکرو — پخش ماکروها هم مثل اکشن‌ها قابل
+    22→    زمان‌بندی شد (تکرارشونده / روزانه / یک‌بار + مکث شبانه)
+    23→  - ۲.۳.۰: تب «🧠 هوش مصنوعی» — ایجنت خودمختار!
+    24→    فقط ایده را می‌گویید؛ خودش برنامه می‌سازد، برای هر پلتفرم محتوا
+    25→    تولید می‌کند، زمان انتشار می‌چیند، استراتژی فالو (چند نفر/چه ساعتی)
+    26→    تصمیم می‌گیرد و آخر کار گزارش فارسی می‌دهد.
+    27→    سرویس‌ها (رایگان و پولی): Z.ai (GLM) — اول لیست، OpenAI،
+    28→    Anthropic Claude، Google Gemini، Groq، DeepSeek، OpenRouter و
+    29→    هر اندپوینت سازگار با OpenAI (مثل Ollama) — ماژول ai_agent.py
+    30→"""
+    31→from __future__ import annotations
+    32→
+    33→import asyncio
+    34→import hashlib
+    35→import json
+    36→import os
+    37→import random
+    38→import re
+    39→import time
+    40→import urllib.parse
+    41→import urllib.request
+    42→import uuid
+    43→from datetime import datetime, timedelta
+    44→from pathlib import Path
+    45→from typing import Any, Dict, List, Optional
+    46→
+    47→import uvicorn
+    48→from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+    49→from fastapi.responses import FileResponse, JSONResponse
+    50→from fastapi.staticfiles import StaticFiles
+    51→
+    52→from ai_agent import AgentSystem
+    53→
+    54→# ---------------------------------------------------------------- مسیرها
+    55→BASE = Path(__file__).resolve().parent
+    56→PORT = int(os.environ.get("PANEL_PORT", "8765"))
+    57→MEDIA_DIR = BASE / "media"
+    58→CONFIG_DIR = BASE / "config"
+    59→MACROS_DIR = BASE / "macros"
+    60→PROFILES_DIR = BASE / "profiles"
+    61→STATIC_DIR = BASE / "static"
+    62→for d in (MEDIA_DIR, CONFIG_DIR, MACROS_DIR, PROFILES_DIR, STATIC_DIR):
+    63→    d.mkdir(parents=True, exist_ok=True)
+    64→
+    65→F_SETTINGS = CONFIG_DIR / "settings.json"
+    66→F_CREDS = CONFIG_DIR / "credentials.json"
+    67→F_SCHED = CONFIG_DIR / "schedules.json"
+    68→
+    69→# ---------------------------------------------------------------- پلتفرم‌ها
+    70→PLATFORMS: List[Dict[str, str]] = [
+    71→    {"id": "instagram", "name": "اینستاگرام", "icon": "📸", "url": "https://www.instagram.com"},
+    72→    {"id": "twitter",   "name": "توییتر (X)",  "icon": "🐦", "url": "https://x.com"},
+    73→    {"id": "telegram",  "name": "تلگرام",      "icon": "✈️", "url": "https://web.telegram.org"},
+    74→    {"id": "facebook",  "name": "فیسبوک",      "icon": "📘", "url": "https://www.facebook.com"},
+    75→    {"id": "linkedin",  "name": "لینکدین",     "icon": "💼", "url": "https://www.linkedin.com"},
+    76→    {"id": "bale",      "name": "بله",         "icon": "💬", "url": "https://ble.ir"},
+    77→    {"id": "rubika",    "name": "روبیکا",      "icon": "🟣", "url": "https://web.rubika.ir"},
+    78→]
+    79→PLAT_IDS = [p["id"] for p in PLATFORMS]
+    80→
+    81→LOGIN_URLS = {
+    82→    "instagram": "https://www.instagram.com/accounts/login/",
+    83→    "twitter": "https://x.com/i/flow/login",
+    84→    "telegram": "https://web.telegram.org",
+    85→    "facebook": "https://www.facebook.com/login",
+    86→    "linkedin": "https://www.linkedin.com/login",
+    87→    "bale": "https://ble.ir",
+    88→    "rubika": "https://web.rubika.ir",
+    89→}
+    90→
+    91→# (سلکتور نام کاربری، سلکتور رمز)
+    92→LOGIN_FIELDS = {
+    93→    "instagram": ("input[name='username']", "input[type='password']"),
+    94→    "twitter": ("input[autocomplete='username']", "input[type='password']"),
+    95→    "telegram": ("input[name='phone'], input[type='tel']", None),
+    96→    "facebook": ("#email, input[name='email']", "#pass, input[type='password']"),
+    97→    "linkedin": ("#username", "#password"),
+    98→    "bale": ("input[type='tel'], input[name='phone'], input[inputmode='tel']", None),
+    99→    "rubika": ("input[type='tel'], input[name='phone'], input[inputmode='tel']", None),
+   100→}
+   101→
+   102→SUBMIT_HINTS = [
+   103→    "button[type='submit']",
+   104→    "button:has-text('ورود')", "button:has-text('Log in')", "button:has-text('Sign in')",
+   105→    "div[role='button']:has-text('ورود')", "div[role='button']:has-text('Log in')",
+   106→]
+   107→
+   108→FALLBACKS = ("msedge", "chrome", None)
+   109→
+   110→# ---------------------------------------------------------------- راهنمای طبیعی جلوه دادن
+   111→GUIDE: Dict[str, Dict[str, Any]] = {
+   112→    "instagram": {
+   113→        "name": "اینستاگرام",
+   114→        "rows": [("فالو در ساعت", "۲۰ تا ۳۰ نفر"), ("فالو در روز", "۱۵۰ تا ۲۰۰ نفر"),
+   115→                 ("لایک در ساعت", "۶۰ تا ۱۰۰"), ("کامنت در روز", "۲۰ تا ۳۰"),
+   116→                 ("پست عکس در روز", "۱ تا ۲"), ("استوری در روز", "تا ۱۰")],
+   117→        "delay": (35, 120), "active": "۹ صبح تا ۱۱ شب",
+   118→        "tips": ["برای حساب تازه، ۲ هفتهٔ اول فقط نصفِ محدودیت‌ها (گرم کردن حساب).",
+   119→                 "بین هر اکشن فاصلهٔ تصادفی بگذارید؛ عدد ثابت = رفتار رباتیک.",
+   120→                 "متن کامنت‌ها را تنوع بدهید؛ کامنت تکراری علامت اسپم است.",
+   121→                 "هر روز چند دقیقه تعامل دستی و طبیعی هم داشته باشید."],
+   122→    },
+   123→    "twitter": {
+   124→        "name": "توییتر (X)",
+   125→        "rows": [("فالو در ساعت", "۱۵ تا ۲۰ نفر"), ("فالو در روز", "تا ۱۰۰ نفر"),
+   126→                 ("توییت در روز", "۲۰ تا ۵۰"), ("لایک در روز", "۳۰۰ تا ۵۰۰")],
+   127→        "delay": (30, 90), "active": "۱۰ صبح تا ۱۲ شب",
+   128→        "tips": ["توییت‌ها را با فاصلهٔ چند ساعتی منتشر کنید نه پشت‌سرهم.",
+   129→                 "ریتوییت و لایک را با توییت دستی خودتان ترکیب کنید.",
+   130→                 "اکانت تازه: هفتهٔ اول حداکثر ۱۰ فالو در روز."],
+   131→    },
+   132→    "telegram": {
+   133→        "name": "تلگرام",
+   134→        "rows": [("پیام به افراد ناشناس", "با احتیاط — ریسک ریپورت"), ("عضویت در کانال در روز", "۱۰ تا ۱۵")],
+   135→        "delay": (45, 120), "active": "۱۰ صبح تا ۱۱ شب",
+   136→        "tips": ["برای ارسال گروهی حتماً تأخیر طولانی بگذارید؛ تلگرام در پیام‌های سریع محدود می‌کند.",
+   137→                 "کد ورود تلگرام وب را از اپ موبایل خود تأیید کنید."],
+   138→    },
+   139→    "facebook": {
+   140→        "name": "فیسبوک",
+   141→        "rows": [("درخواست دوستی در روز", "۱۰ تا ۱۵"), ("کامنت در روز", "۲۰ تا ۳۰"), ("پست در روز", "۱ تا ۳")],
+   142→        "delay": (40, 120), "active": "۹ صبح تا ۱۱ شب",
+   143→        "tips": ["فیسبوک نسبت به دوستی‌های سریع حساس است؛ تعداد را کم نگه دارید.",
+   144→                 "قبل از اتوماسیون، اکانت باید حداقل چند ماه فعالیت دستی داشته باشد."],
+   145→    },
+   146→    "linkedin": {
+   147→        "name": "لینکدین",
+   148→        "rows": [("درخواست اتصال در روز", "۱۵ تا ۲۰"), ("اتصال در هفته", "حداکثر ۸۰ تا ۱۰۰"), ("پست در هفته", "۲ تا ۵")],
+   149→        "delay": (60, 180), "active": "۸ صبح تا ۶ عصر (روزهای کاری)",
+   150→        "tips": ["لینکدین خارج از ساعت کاری فعالیت زیاد را عجیب می‌بیند.",
+   151→                 "همیشه هنگام اتصال، یادداشت شخصی اضافه کنید.",
+   152→                 "آخر هفته (پنجشنبه/جمعه ایرانی) کمتر فعالیت کنید."],
+   153→    },
+   154→    "bale": {
+   155→        "name": "بله",
+   156→        "rows": [("پیام در روز", "۵۰ تا ۸۰"), ("عضویت در کانال در روز", "۱۰ تا ۱۵")],
+   157→        "delay": (30, 90), "active": "۹ صبح تا ۱۱ شب",
+   158→        "tips": ["برای ارسال به کاربران ناشناس، فاصلهٔ طولانی بگذارید.",
+   159→                 "ترکیب پیام‌های یکسان گروهی، ریسک محدودیت را بالا می‌برد."],
+   160→    },
+   161→    "rubika": {
+   162→        "name": "روبیکا",
+   163→        "rows": [("پیام در روز", "۵۰ تا ۸۰"), ("عضویت در کانال در روز", "۱۰ تا ۱۵")],
+   164→        "delay": (30, 90), "active": "۹ صبح تا ۱۱ شب",
+   165→        "tips": ["مثل هر پیام‌رسان، ارسال انبوه بدون فاصله باعث محدودیت می‌شود.",
+   166→                 "برای کانال‌های عمومی، عضویت‌ها را در طول روز پخش کنید."],
+   167→    },
+   168→}
+   169→
+   170→# فاصلهٔ ایمن بین زیر-اکشن‌ها بر اساس نوع اکشن (ثانیه)
+   171→SAFE_DELAY = {
+   172→    "follow": (35, 120), "friend_request": (45, 150), "connect": (60, 180),
+   173→    "like": (20, 60), "comment": (60, 180), "retweet": (60, 180),
+   174→    "send_message": (45, 120), "join_channel": (60, 180),
+   175→    "post_photo": (120, 300), "post_story": (120, 300), "tweet": (180, 420), "post": (180, 420),
+   176→}
+   177→
+   178→# ---------------------------------------------------------------- اکشن‌ها (برای فرانت‌اند)
+   179→ACTIONS: Dict[str, List[Dict[str, Any]]] = {
+   180→    "instagram": [
+   181→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   182→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   183→        {"id": "follow", "name": "فالو کردن", "params": [
+   184→            {"key": "target", "name": "کاربر یا هشتگ (مثل hashtag:عکس) — چند مورد با ویرگول", "type": "text"},
+   185→            {"key": "count", "name": "تعداد", "type": "number", "default": 1}]},
+   186→        {"id": "like", "name": "لایک پست‌های فید", "params": [
+   187→            {"key": "count", "name": "تعداد لایک", "type": "number", "default": 5}]},
+   188→        {"id": "comment", "name": "کامنت گذاشتن", "params": [
+   189→            {"key": "target", "name": "نام کاربری صاحب پست", "type": "text"},
+   190→            {"key": "text", "name": "متن کامنت", "type": "textarea"},
+   191→            {"key": "count", "name": "تعداد کامنت (روی پست‌های اخیر)", "type": "number", "default": 1}]},
+   192→        {"id": "post_photo", "name": "انتشار عکس (پست)", "params": [
+   193→            {"key": "media", "name": "فایل رسانه", "type": "media"},
+   194→            {"key": "text", "name": "کپشن", "type": "textarea"}]},
+   195→        {"id": "post_story", "name": "انتشار استوری", "params": [
+   196→            {"key": "media", "name": "فایل رسانه", "type": "media"}]},
+   197→        {"id": "search", "name": "جستجو", "params": [{"key": "query", "name": "عبارت", "type": "text"}]},
+   198→    ],
+   199→    "twitter": [
+   200→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   201→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   202→        {"id": "follow", "name": "فالو کردن", "params": [
+   203→            {"key": "target", "name": "نام کاربری (ها) با ویرگول", "type": "text"},
+   204→            {"key": "count", "name": "تعداد", "type": "number", "default": 1}]},
+   205→        {"id": "like", "name": "لایک توییت‌های فید", "params": [
+   206→            {"key": "count", "name": "تعداد", "type": "number", "default": 5}]},
+   207→        {"id": "tweet", "name": "انتشار توییت", "params": [
+   208→            {"key": "media", "name": "فایل رسانه (اختیاری)", "type": "media"},
+   209→            {"key": "text", "name": "متن توییت", "type": "textarea"}]},
+   210→        {"id": "retweet", "name": "ریتوییت", "params": [
+   211→            {"key": "target", "name": "لینک توییت", "type": "text"}]},
+   212→        {"id": "search", "name": "جستجو", "params": [{"key": "query", "name": "عبارت", "type": "text"}]},
+   213→    ],
+   214→    "telegram": [
+   215→        {"id": "open", "name": "باز کردن تلگرام وب", "params": []},
+   216→        {"id": "login", "name": "ورود (شماره تلفن خودکار)", "params": []},
+   217→        {"id": "join_channel", "name": "عضویت در کانال", "params": [
+   218→            {"key": "target", "name": "آدرس یا نام کانال", "type": "text"}]},
+   219→        {"id": "send_message", "name": "ارسال پیام", "params": [
+   220→            {"key": "target", "name": "نام کاربری یا کانال", "type": "text"},
+   221→            {"key": "text", "name": "متن پیام", "type": "textarea"}]},
+   222→        {"id": "search", "name": "جستجوی جهانی", "params": [{"key": "query", "name": "عبارت", "type": "text"}]},
+   223→    ],
+   224→    "facebook": [
+   225→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   226→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   227→        {"id": "friend_request", "name": "درخواست دوستی", "params": [
+   228→            {"key": "target", "name": "لینک پروفایل یا نام", "type": "text"},
+   229→            {"key": "count", "name": "تعداد (برای جستجو)", "type": "number", "default": 1}]},
+   230→        {"id": "like", "name": "لایک پست‌های فید", "params": [
+   231→            {"key": "count", "name": "تعداد", "type": "number", "default": 5}]},
+   232→        {"id": "comment", "name": "کامنت گذاشتن", "params": [
+   233→            {"key": "target", "name": "لینک پست", "type": "text"},
+   234→            {"key": "text", "name": "متن کامنت", "type": "textarea"}]},
+   235→        {"id": "post_photo", "name": "انتشار عکس (پست)", "params": [
+   236→            {"key": "media", "name": "فایل رسانه", "type": "media"},
+   237→            {"key": "text", "name": "متن پست", "type": "textarea"}]},
+   238→    ],
+   239→    "linkedin": [
+   240→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   241→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   242→        {"id": "connect", "name": "درخواست اتصال", "params": [
+   243→            {"key": "target", "name": "لینک پروفایل یا نام", "type": "text"},
+   244→            {"key": "count", "name": "تعداد (برای جستجو)", "type": "number", "default": 1}]},
+   245→        {"id": "like", "name": "لایک پست‌های فید", "params": [
+   246→            {"key": "count", "name": "تعداد", "type": "number", "default": 5}]},
+   247→        {"id": "comment", "name": "کامنت گذاشتن", "params": [
+   248→            {"key": "target", "name": "لینک پست", "type": "text"},
+   249→            {"key": "text", "name": "متن کامنت", "type": "textarea"}]},
+   250→        {"id": "post", "name": "انتشار پست", "params": [
+   251→            {"key": "media", "name": "فایل رسانه (اختیاری)", "type": "media"},
+   252→            {"key": "text", "name": "متن پست", "type": "textarea"}]},
+   253→    ],
+   254→    "bale": [
+   255→        {"id": "open", "name": "باز کردن بله", "params": []},
+   256→        {"id": "login", "name": "ورود (شماره تلفن خودکار)", "params": []},
+   257→        {"id": "join_channel", "name": "عضویت در کانال", "params": [
+   258→            {"key": "target", "name": "نام کانال", "type": "text"}]},
+   259→        {"id": "send_message", "name": "ارسال پیام", "params": [
+   260→            {"key": "target", "name": "نام کاربری یا کانال", "type": "text"},
+   261→            {"key": "text", "name": "متن پیام", "type": "textarea"}]},
+   262→    ],
+   263→    "rubika": [
+   264→        {"id": "open", "name": "باز کردن روبیکا", "params": []},
+   265→        {"id": "login", "name": "ورود (شماره تلفن خودکار)", "params": []},
+   266→        {"id": "join_channel", "name": "عضویت در کانال", "params": [
+   267→            {"key": "target", "name": "نام کانال", "type": "text"}]},
+   268→        {"id": "send_message", "name": "ارسال پیام", "params": [
+   269→            {"key": "target", "name": "نام کاربری یا کانال", "type": "text"},
+   270→            {"key": "text", "name": "متن پیام", "type": "textarea"}]},
+   271→    ],
+   272→}
+   273→
+   274→DEFAULT_SETTINGS: Dict[str, Any] = {
+   275→    "general": {"headless": False, "channel": "auto", "proxy": "", "start_maximized": True},
+   276→    "stealth": {
+   277→        "enabled": True,
+   278→        "level": "standard",
+   279→        # —— گروه ۱: هویت مرورگر
+   280→        "hide_webdriver": True, "spoof_languages": True, "plugins_mimic": True,
+   281→        "chrome_runtime": True, "permissions_fix": True, "ua_fix": True,
+   282→        "spoof_ua": False, "user_agent": "",
+   283→        # —— گروه ۲: اثر انگشت دیجیتال
+   284→        "webgl_mask": True, "canvas_noise": True, "audio_noise": True,
+   285→        "font_mask": True, "hardware_specs": True, "webrtc_shield": False,
+   286→        # —— گروه ۳: رفتار انسانی
+   287→        "human_typing": True, "human_delays": True, "typing_speed": "human",
+   288→        "mouse_curves": True, "random_scrolls": True, "page_dwell": True,
+   289→        "night_pause": True,
+   290→        "per_platform": {pid: True for pid in PLAT_IDS},
+   291→    },
+   292→    "auto_fill": True,
+   293→    "captcha": {"mode": "notify", "provider": "2captcha", "api_key": "", "manual_wait_seconds": 180},
+   294→    "ai": {
+   295→        "provider": "zai",
+   296→        "model": "glm-4.6",
+   297→        "autonomy": "semi",
+   298→        "temperature": 0.7,
+   299→        "api_keys": {k: "" for k in ("zai", "openai", "anthropic", "gemini",
+   300→                                       "groq", "deepseek", "openrouter", "custom")},
+   301→        "custom_base": "",
+   302→        "custom_model": "",
+   303→        "budgets": {"posts_per_day": 4, "posts_per_mission": 40},
+   304→        "follow_plans": {},
+   305→    },
+   306→}
+   307→
+   308→# ---------------------------------------------------------------- ابزار فایل/حالت
+   309→def load_json(path: Path, default: Any) -> Any:
+   310→    try:
+   311→        return json.loads(path.read_text(encoding="utf-8"))
+   312→    except Exception:
+   313→        return default
+   314→
+   315→def save_json(path: Path, data: Any) -> None:
+   316→    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+   317→
+   318→def settings() -> Dict[str, Any]:
+   319→    s = load_json(F_SETTINGS, {})
+   320→    merged = json.loads(json.dumps(DEFAULT_SETTINGS))  # deep copy
+   321→    for k, v in s.items():
+   322→        if k == "stealth":
+   323→            merged["stealth"].update({kk: vv for kk, vv in v.items() if kk != "per_platform"})
+   324→            merged["stealth"]["per_platform"].update(v.get("per_platform", {}))
+   325→        elif isinstance(v, dict):
+   326→            merged[k].update(v)
+   327→        else:
+   328→            merged[k] = v
+   329→    return merged
+   330→
+   331→def creds() -> Dict[str, Any]:
+   332→    return load_json(F_CREDS, {})
+   333→
+   334→def load_schedules() -> List[Dict[str, Any]]:
+   335→    return load_json(F_SCHED, [])
+   336→
+   337→def save_schedules(data: List[Dict[str, Any]]) -> None:
+   338→    save_json(F_SCHED, data)
+   339→
+   340→LOGS: List[Dict[str, str]] = []
+   341→WS_CLIENTS: set = set()
+   342→STATS: Dict[str, Any] = {"date": datetime.now().strftime("%Y-%m-%d"), "runs": 0, "success": 0, "fail": 0}
+   343→CURRENT_RUN: Optional[Dict[str, Any]] = None
+   344→LAST_RESULT: Optional[Dict[str, Any]] = None
+   345→RUNNING_SCHED: set = set()
+   346→
+   347→async def broadcast(obj: Dict[str, Any]) -> None:
+   348→    dead = set()
+   349→    msg = json.dumps(obj, ensure_ascii=False)
+   350→    for ws in list(WS_CLIENTS):
+   351→        try:
+   352→            await ws.send_text(msg)
+   353→        except Exception:
+   354→            dead.add(ws)
+   355→    WS_CLIENTS.difference_update(dead)
+   356→
+   357→def log(message: str, level: str = "info") -> None:
+   358→    entry = {"t": datetime.now().strftime("%H:%M:%S"), "msg": message, "level": level}
+   359→    LOGS.append(entry)
+   360→    if len(LOGS) > 400:
+   361→        del LOGS[:200]
+   362→    try:
+   363→        loop = asyncio.get_running_loop()
+   364→        loop.create_task(broadcast({"type": "log", **entry}))
+   365→    except RuntimeError:
+   366→        pass
+   367→
+   368→def media_list() -> List[Dict[str, Any]]:
+   369→    out = []
+   370→    for f in sorted(MEDIA_DIR.iterdir(), key=lambda x: -x.stat().st_mtime):
+   371→        if f.is_file() and not f.name.startswith("."):
+   372→            out.append({"name": f.name, "size": f.stat().st_size,
+   373→                        "image": f.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")})
+   374→    return out
+   375→
+   376→def macro_names() -> List[Dict[str, Any]]:
+   377→    """فهرست ماکروها به‌شکل [{name, events}] — هماهنگ با /api/macro/list و رندر پنل."""
+   378→    out: List[Dict[str, Any]] = []
+   379→    for f in sorted(MACROS_DIR.glob("*.json")):
+   380→        try:
+   381→            n = len(json.loads(f.read_text(encoding="utf-8")))
+   382→        except Exception:
+   383→            n = 0
+   384→        out.append({"name": f.stem, "events": n})
+   385→    return out
+   386→
+   387→# ---------------------------------------------------------------- رفتار انسانی
+   388→def _stealth() -> Dict[str, Any]:
+   389→    return settings()["stealth"]
+   390→
+   391→async def hdelay(lo: float = 0.8, hi: float = 2.8) -> None:
+   392→    if not _stealth().get("human_delays", True):
+   393→        lo, hi = min(lo, 0.5), min(hi, 0.9)
+   394→    await asyncio.sleep(random.uniform(lo, hi))
+   395→
+   396→_TYPE_SPEEDS: Dict[str, tuple] = {"off": (0.0, 0.0), "fast": (0.03, 0.09), "human": (0.06, 0.19), "slow": (0.14, 0.38)}
+   397→
+   398→def _night_now() -> bool:
+   399→    """مکث شبانه (۱ تا ۷ بامداد) — ساعت‌هایی که هیچ انسانی فعال نیست."""
+   400→    try:
+   401→        return bool(_stealth().get("night_pause", True)) and datetime.now().hour in (1, 2, 3, 4, 5, 6)
+   402→    except Exception:
+   403→        return False
+   404→
+   405→async def goto(page, url: str) -> None:
+   406→    await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+   407→    await hdelay(1.2, 2.6)
+   408→    # اسکرول تصادفی کوتاه — انسان‌ها بعد از باز شدن صفحه کمی اسکرول می‌کنند
+   409→    if _stealth().get("random_scrolls", True) and random.random() < 0.45:
+   410→        try:
+   411→            await page.mouse.wheel(0, random.randint(140, 520))
+   412→            await asyncio.sleep(random.uniform(0.5, 1.4))
+   413→            await page.mouse.wheel(0, -random.randint(30, 140))
+   414→        except Exception:
+   415→            pass
+   416→
+   417→async def hclick(page, sel: str, timeout: int = 8000) -> bool:
+   418→    st = _stealth()
+   419→    if st.get("human_delays", True):
+   420→        await asyncio.sleep(random.uniform(0.3, 0.9))
+   421→    # حرکت موس با مسیر منحنی (بازیجی) به‌جای پرش ناگهانی — امضای موس ربات‌ها خط راست است
+   422→    if st.get("mouse_curves", True):
+   423→        try:
+   424→            box = await page.locator(sel).first.bounding_box()
+   425→            if box:
+   426→                tx = box["x"] + box["width"] * random.uniform(0.25, 0.75)
+   427→                ty = box["y"] + box["height"] * random.uniform(0.3, 0.7)
+   428→                sx = tx - random.uniform(110, 300)
+   429→                sy = ty + random.uniform(30, 150)
+   430→                cx = tx + random.uniform(-70, 70)
+   431→                cy = ty - random.uniform(20, 80)
+   432→                steps = random.randint(12, 24)
+   433→                for i in range(1, steps + 1):
+   434→                    t = i / steps
+   435→                    mt = 1 - t
+   436→                    x = mt * mt * sx + 2 * mt * t * cx + t * t * tx
+   437→                    y = mt * mt * sy + 2 * mt * t * cy + t * t * ty
+   438→                    await page.mouse.move(x, y)
+   439→                await asyncio.sleep(random.uniform(0.04, 0.15))
+   440→        except Exception:
+   441→            pass
+   442→    await page.click(sel, timeout=timeout)
+   443→    return True
+   444→
+   445→async def htype(page, sel: Optional[str], text: str) -> None:
+   446→    if sel:
+   447→        await page.click(sel, timeout=8000)
+   448→    st = _stealth()
+   449→    if not st.get("human_typing", True):
+   450→        await page.keyboard.type(text)
+   451→        return
+   452→    lo, hi = _TYPE_SPEEDS.get(st.get("typing_speed", "human"), _TYPE_SPEEDS["human"])
+   453→    for ch in text:
+   454→        await page.keyboard.type(ch)
+   455→        if lo:
+   456→            await asyncio.sleep(random.uniform(lo, hi))
+   457→            if random.random() < 0.04:  # مکث «فکر کردن» انسانی وسط تایپ
+   458→                await asyncio.sleep(random.uniform(0.25, 0.7))
+   459→
+   460→async def click_first(page, sels: List[str], timeout: int = 6000) -> bool:
+   461→    for sel in sels:
+   462→        try:
+   463→            if await page.locator(sel).count():
+   464→                await hclick(page, sel, timeout=timeout)
+   465→                return True
+   466→        except Exception:
+   467→            continue
+   468→    return False
+   469→
+   470→# ---------------------------------------------------------------- ضد شناسایی v3 (متد روز دنیا)
+   471→# اصل طلایی: «اثر انگشت پایدار». نویز تصادفیِ هر بار، خودش توسط سیستم‌های
+   472→# ضد ربات (مثل CreepJS) شناسایی می‌شود؛ ما برای هر پروفایل یک seed دائمی
+   473→# می‌سازیم تا GPU/CPU/Canvas/صدا بین اجراها ثابت بماند — یعنی شما یک
+   474→# «انسانِ همیشگی» با یک سیستم مشخص باشید، نه یک رباتِ هر بار متفاوت.
+   475→GPU_POOL = [
+   476→    ("Google Inc. (NVIDIA)", "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   477→    ("Google Inc. (Intel)", "ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   478→    ("Google Inc. (AMD)", "ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   479→    ("Google Inc. (Intel)", "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   480→]
+   481→CORES_POOL = [4, 6, 8, 12, 16]
+   482→MEM_POOL = [4, 8, 8, 16]
+   483→
+   484→def fp_values(platform: str) -> Dict[str, Any]:
+   485→    """مقادیر اثر انگشت پایدار برای هر پلتفرم (seed دائمی در پروفایل ذخیره می‌شود)."""
+   486→    pdir = PROFILES_DIR / platform
+   487→    try:
+   488→        pdir.mkdir(parents=True, exist_ok=True)
+   489→    except Exception:
+   490→        pass
+   491→    f = pdir / ".fpseed"
+   492→    seed = 0
+   493→    try:
+   494→        seed = int(f.read_text(encoding="utf-8").strip())
+   495→    except Exception:
+   496→        seed = random.randrange(1, 2 ** 31)
+   497→        try:
+   498→            f.write_text(str(seed), encoding="utf-8")
+   499→        except Exception:
+   500→            pass
+   501→    h = hashlib.sha256(f"parsagent:{platform}:{seed}".encode()).digest()
+   502→    gpu = GPU_POOL[h[0] % len(GPU_POOL)]
+   503→    return {
+   504→        "seed": seed,
+   505→        "vendor": gpu[0], "renderer": gpu[1],
+   506→        "cores": CORES_POOL[h[1] % len(CORES_POOL)],
+   507→        "mem": MEM_POOL[h[2] % len(MEM_POOL)],
+   508→        # جابجایی پیکسل ثابت Canvas (پایدار — نه تصادفی)
+   509→        "d1": (h[3] % 3) - 1, "d2": (h[4] % 3) - 1,
+   510→    }
+   511→
+   512→STEALTH_JS = r"""
+   513→(() => {
+   514→  try {
+   515→    const C = window.__PA_CFG__ || {};
+   516→    /* —— ضد تشخیصِ تشخیص: همهٔ تابع‌های وصله‌شده «native» به نظر می‌رسند (toString cloak) */
+   517→    const NATIVE = new Map();
+   518→    const _ts = Function.prototype.toString;
+   519→    Function.prototype.toString = function () {
+   520→      const n = NATIVE.get(this);
+   521→      if (n) return "function " + n + "() { [native code] }";
+   522→      return _ts.call(this);
+   523→    };
+   524→    NATIVE.set(Function.prototype.toString, "toString");
+   525→    const cloak = (fn, name) => { try { NATIVE.set(fn, name); } catch (e) {} };
+   526→    const def = (obj, prop, value) => {
+   527→      try { Object.defineProperty(obj, prop, { get: () => value, configurable: true }); } catch (e) {}
+   528→    };
+   529→
+   530→    /* ============ گروه ۱: هویت مرورگر ============ */
+   531→    if (C.hide_webdriver !== false) {
+   532→      try { delete Object.getPrototypeOf(navigator).webdriver; } catch (e) {}
+   533→      def(navigator, "webdriver", undefined);
+   534→    }
+   535→    if (C.spoof_languages !== false) {
+   536→      def(navigator, "languages", ["fa-IR", "fa", "en-US", "en"]);
+   537→      def(navigator, "language", "fa-IR");
+   538→    }
+   539→    if (C.plugins_mimic !== false) {
+   540→      const names = ["PDF Viewer", "Chrome PDF Viewer", "Chromium PDF Viewer", "Microsoft Edge PDF Viewer", "WebKit built-in PDF"];
+   541→      const pl = names.map((n) => ({ name: n, filename: "internal-pdf-viewer", description: "Portable Document Format", length: 1 }));
+   542→      def(navigator, "plugins", pl);
+   543→      def(navigator, "mimeTypes", [{ type: "application/pdf", suffixes: "pdf", description: "Portable Document Format", enabledPlugin: pl[0] }]);
+   544→    }
+   545→    if (C.chrome_runtime !== false) {
+   546→      /* window.chrome کامل — حالت خالی/ناقص خودش نشانهٔ اتوماسیون است */
+   547→      window.chrome = window.chrome || {};
+   548→      const ch = window.chrome;
+   549→      ch.app = ch.app || { isInstalled: false };
+   550→      ch.runtime = ch.runtime || { OnInstalledReason: {}, PlatformOs: {}, connect: function () {}, sendMessage: function () {} };
+   551→      ch.loadTimes = ch.loadTimes || function () {};
+   552→      ch.csi = ch.csi || function () {};
+   553→    }
+   554→    if (C.permissions_fix !== false) {
+   555→      try {
+   556→        const q = navigator.permissions.query.bind(navigator.permissions);
+   557→        navigator.permissions.query = (p) => (p && p.name === "notifications")
+   558→          ? Promise.resolve({ state: Notification.permission }) : q(p);
+   559→        cloak(navigator.permissions.query, "query");
+   560→      } catch (e) {}
+   561→    }
+   562→    if (C.ua_fix !== false || C.spoof_ua) {
+   563→      try {
+   564→        let ua = navigator.userAgent.replace(/Headless(Chrome)/g, "$1");
+   565→        if (C.spoof_ua && C.user_agent) ua = C.user_agent;
+   566→        def(navigator, "userAgent", ua);
+   567→      } catch (e) {}
+   568→    }
+   569→
+   570→    /* ============ گروه ۲: اثر انگشت دیجیتال (پایدار از seed پروفایل) ============ */
+   571→    if (C.hardware_specs !== false) {
+   572→      def(navigator, "hardwareConcurrency", C.cores || 8);
+   573→      try { def(navigator, "deviceMemory", C.mem || 8); } catch (e) {}
+   574→      def(navigator, "maxTouchPoints", 0);
+   575→    }
+   576→    if (C.webgl_mask !== false) {
+   577→      for (const proto of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+   578→        if (!proto) continue;
+   579→        try {
+   580→          const gp = proto.prototype.getParameter;
+   581→          proto.prototype.getParameter = function (a) {
+   582→            if (a === 37445) return C.vendor;
+   583→            if (a === 37446) return C.renderer;
+   584→            return gp.apply(this, [a]);
+   585→          };
+   586→          cloak(proto.prototype.getParameter, "getParameter");
+   587→        } catch (e) {}
+   588→      }
+   589→    }
+   590→    if (C.canvas_noise !== false) {
+   591→      /* نویز پایدار: مقدار ثابت d1/d2 از seed — دو بار خواندن Canvas همان
+   592→         نتیجه را می‌دهد. نویز تصادفیِ هر بار، الگوریتم CreepJS فوراً لو می‌دهد. */
+   593→      try {
+   594→        const done = new WeakSet();
+   595→        const td = HTMLCanvasElement.prototype.toDataURL;
+   596→        HTMLCanvasElement.prototype.toDataURL = function (...args) {
+   597→          try {
+   598→            if (this.width > 1 && this.height > 1 && !done.has(this)) {
+   599→              const c = this.getContext("2d");
+   600→              if (c) {
+   601→                const x = c.getImageData(0, 0, Math.min(this.width, 8), 1);
+   602→                x.data[0] += (C.d1 || 1); x.data[1] += (C.d2 || 1);
+   603→                c.putImageData(x, 0, 0);
+   604→                done.add(this);
+   605→              }
+   606→            }
+   607→          } catch (e) {}
+   608→          return td.apply(this, args);
+   609→        };
+   610→        cloak(HTMLCanvasElement.prototype.toDataURL, "toDataURL");
+   611→      } catch (e) {}
+   612→    }
+   613→    if (C.audio_noise !== false) {
+   614→      try {
+   615→        const gd = AudioBuffer.prototype.getChannelData;
+   616→        AudioBuffer.prototype.getChannelData = function (ch) {
+   617→          const d = gd.apply(this, [ch]);
+   618→          try { if (d && d.length) d[Math.min(3, d.length - 1)] += 1e-7 * ((C.seed % 7) + 1); } catch (e) {}
+   619→          return d;
+   620→        };
+   621→        cloak(AudioBuffer.prototype.getChannelData, "getChannelData");
+   622→      } catch (e) {}
+   623→    }
+   624→    if (C.font_mask !== false) {
+   625→      /* شمارش فونت‌ها: فونت‌های رایج ویندوز = بله؛ فونت ساختگی = نه */
+   626→      try {
+   627→        if (document.fonts && document.fonts.check) {
+   628→          const COMMON = ["Arial", "Calibri", "Cambria", "Consolas", "Courier New", "Georgia",
+   629→                          "Impact", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
+   630→          document.fonts.check = (font, text) => {
+   631→            try {
+   632→              const fam = String(font || "").toLowerCase();
+   633→              if (COMMON.some((fn) => fam.includes(fn.toLowerCase()))) return true;
+   634→            } catch (e) {}
+   635→            return false;
+   636→          };
+   637→          cloak(document.fonts.check, "check");
+   638→        }
+   639→      } catch (e) {}
+   640→    }
+   641→    if (C.webrtc_shield) {
+   642→      /* جلوگیری از لو رفتن IP محلی از طریق WebRTC (پیش‌فرض خاموش —
+   643→         تماس صوتی/تصویری پیام‌رسان‌ها ممکن است به هم بریزد) */
+   644→      try {
+   645→        const OC = window.RTCPeerConnection;
+   646→        if (OC) {
+   647→          const NW = function RTCPeerConnection() {
+   648→            const pc = new OC(...arguments);
+   649→            pc.addEventListener("icecandidate", (e) => {
+   650→              if (e.candidate && e.candidate.candidate && !/typ relay/.test(e.candidate.candidate)) {
+   651→                e.stopImmediatePropagation();
+   652→              }
+   653→            }, true);
+   654→            return pc;
+   655→          };
+   656→          NW.prototype = OC.prototype;
+   657→          window.RTCPeerConnection = NW;
+   658→        }
+   659→      } catch (e) {}
+   660→    }
+   661→  } catch (e) {}
+   662→})();
+   663→"""
+   664→
+   665→def build_stealth_init(st: Dict[str, Any], platform: str) -> str:
+   666→    """اسکریپت راه‌اندازی کامل ضد شناسایی برای تزریق در نشست مرورگر."""
+   667→    s = st["stealth"]
+   668→    fp = fp_values(platform)
+   669→    cfg: Dict[str, Any] = {k: bool(s.get(k, True)) for k in (
+   670→        "hide_webdriver", "spoof_languages", "plugins_mimic", "chrome_runtime", "permissions_fix",
+   671→        "ua_fix", "webgl_mask", "canvas_noise", "audio_noise", "font_mask", "hardware_specs")}
+   672→    cfg["webrtc_shield"] = bool(s.get("webrtc_shield", False))
+   673→    cfg["spoof_ua"] = bool(s.get("spoof_ua", False))
+   674→    cfg["user_agent"] = (s.get("user_agent") or "").strip()
+   675→    cfg.update(vendor=fp["vendor"], renderer=fp["renderer"], cores=fp["cores"],
+   676→               mem=fp["mem"], d1=fp["d1"], d2=fp["d2"], seed=fp["seed"])
+   677→    return "window.__PA_CFG__ = %s;\n%s" % (json.dumps(cfg), STEALTH_JS)
+   678→
+   679→RECORDER_JS = """
+   680→(() => {
+   681→  if (window.__PA_REC_ACTIVE__) return;
+   682→  window.__PA_REC_ACTIVE__ = true;
+   683→  const q = (el) => {
+   684→    if (!el || el === document.documentElement) return 'body';
+   685→    let n = el, path = [];
+   686→    while (n && n.nodeType === 1 && n !== document.body) {
+   687→      let s = n.tagName.toLowerCase();
+   688→      if (n.id) { path.unshift('#' + (window.CSS && CSS.escape ? CSS.escape(n.id) : n.id)); break; }
+   689→      const nm = n.getAttribute && n.getAttribute('name');
+   690→      if (nm) s += '[name="' + nm + '"]';
+   691→      const sib = Array.from(n.parentNode ? n.parentNode.children : []).filter(x => x.tagName === n.tagName);
+   692→      if (sib.length > 1) s += ':nth-of-type(' + (sib.indexOf(n) + 1) + ')';
+   693→      path.unshift(s);
+   694→      n = n.parentElement;
+   695→    }
+   696→    if (!path.length) path = ['body'];
+   697→    return path.join(' > ');
+   698→  };
+   699→  document.addEventListener('click', (e) => {
+   700→    try {
+   701→      let t = e.target;
+   702→      if (t && t.closest) t = t.closest('a,button,input,textarea,select,[role=button],[onclick],label,svg,path') || t;
+   703→      window.__pa_rec(JSON.stringify({t: 'click', sel: q(t), ts: Date.now()}));
+   704→    } catch(err) {}
+   705→  }, true);
+   706→  document.addEventListener('change', (e) => {
+   707→    try {
+   708→      const t = e.target;
+   709→      if (!t || !t.tagName) return;
+   710→      const ok = t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' ||
+   711→        (t.tagName === 'INPUT' && ['text','password','email','tel','number','search','url'].includes(t.type));
+   712→      if (ok) window.__pa_rec(JSON.stringify({t: 'input', sel: q(t), v: t.value || '', ts: Date.now()}));
+   713→    } catch(err) {}
+   714→  }, true);
+   715→})();
+   716→"""
+   717→
+   718→# ---------------------------------------------------------------- نشست مرورگر
+   719→class BotSession:
+   720→    def __init__(self, platform: str):
+
+[showing lines 1-720 of 2157; use offset=721 with limit to continue reading]

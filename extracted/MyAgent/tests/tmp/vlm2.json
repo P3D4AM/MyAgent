@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Based on the provided screenshot, here is the verification:\n\n1.  **Accounts/Credentials Card:** **Yes**, it renders cleanly. The platform chips (reCAPTCHA v2/v3, hCaptcha, etc.) and the input fields for username/password are well-aligned with proper spacing.\n2.  **Captcha Service Card:** **Yes**, it renders cleanly. The dropdown selector for the service (2Captcha) and the API key input field are clearly defined and functional-looking.\n3.  **Overlap/Breakage:** **No**, there is no overlap or breakage. The layout uses a grid system that handles the Right-to-Left (RTL) Persian text correctly without any elements bleeding into one another or breaking the container boundaries.\n\n**Conclusion:** The UI is stable and visually clean.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1790367680,
+  "id": "202609260421175b8a26deb4d84871",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "202609260421175b8a26deb4d84871",
+  "usage": {
+    "completion_tokens": 163,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1726,
+    "prompt_tokens_details": {
+      "cached_tokens": 2
+    },
+    "total_tokens": 1889
+  }
+}

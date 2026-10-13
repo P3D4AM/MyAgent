@@ -1,0 +1,975 @@
+     1→#!/usr/bin/env python3
+     2→# -*- coding: utf-8 -*-
+     3→"""ParsAgent Launcher — لانچر گرافیکی نصب و اجرا
+     4→====================================================
+     5→
+     6→این همان «دکمهٔ روشن/خاموش» پارس‌ایجنت است:
+     7→
+     8→  ۱) بازش کن (دابل‌کلیک روی ParsAgent.bat یا اجرای python launcher.py)
+     9→  ۲) دکمهٔ «نصب پیش‌نیازها» فقط بار اول لازم است
+    10→  ۳) دکمهٔ «اجرای سرور» را بزن → سرور محلی بالا می‌آید و پنل کنترل
+    11→     به‌صورت خودکار در مرورگر باز می‌شود (http://127.0.0.1:8765)
+    12→
+    13→سرور فقط روی همین سیستم در دسترس است؛ هیچ داده‌ای جایی ارسال نمی‌شود.
+    14→
+    15→نسخهٔ ۲.۱.۰ — رفع گیرکردن روی «در حال راه‌اندازی سرور»:
+    16→  • بررسی سلامت سرور مستقیم و بدون پروکسی انجام می‌شود؛ حتی وقتی
+    17→    VPN/پروکسی سیستم روشن است، مسیر 127.0.0.1 دیگر گیر نمی‌کند.
+    18→  • خروجی و خطاهای سرور به‌صورت زنده در لاگ همین لانچر می‌آید
+    19→    (قبلاً مخفی بود و عیب‌یابی ممکن نبود).
+    20→  • اگر سرور از قبل روشن باشد، تشخیص داده می‌شود و پنل باز می‌شود.
+    21→
+    22→نسخهٔ ۲.۷.۰ — مرورگر، پروکسی و ورود خودکار:
+    23→  • پنل: خطاهای شبکه (ERR_CONNECTION_CLOSED و…) با راهنمای فارسی پروکسی/VPN;
+    24→    پروکسی سیستم ویندوز (v2rayN و مثل آن) خودکار روی مرورگر اعمال می‌شود.
+    25→  • پنل: زنجیرهٔ مرورگر Edge → Chrome → Chromium (نصب خودکار با آینه) + Firefox;
+    26→    ورود خودکار همهٔ ۷ پلتفرم از نو (بنر کوکی، فلو X، تشخیص لاگین‌شده، OTP).
+    27→  • تغییر این نسخه فقط در panel_server.py و static/index.html است؛
+    28→    لانچر همان ۲.۵.۰ است و فقط شمارهٔ نسخه به‌روز شد.
+    29→
+    30→نسخهٔ ۲.۵.۰ — نصب آفلاین بدون اینترنت (همه‌چیز داخل همین فایل):
+    31→  • «💾 ساخت بستهٔ آفلاین» → همهٔ پیش‌نیازها به‌صورت wheel آماده +
+    32→    (اختیاری) مرورگر کرومیوم، داخل پوشهٔ پروژه در offline_bundle/
+    33→    ذخیره می‌شوند. بعد کل پوشهٔ پروژه را هرجا ببرید، اینترنت نمی‌خواهد.
+    34→  • «📀 نصب آفلاین» → روی هر سیستمِ بدون اینترنت، نصب کامل فقط از
+    35→    روی همان پوشه انجام می‌شود — بدون حتی یک بایت دانلود.
+    36→  • اگر موقع اجرا ماژولی نصب نبود و بستهٔ آفلاین کنار پروژه بود،
+    37→    خودکار پیشنهاد نصبِ بدون اینترنت داده می‌شود.
+    38→  • محافظ سازگاری: نسخهٔ پایتون / ۳۲-۶۴ بیتی / پایتون free-threaded
+    39→    (مثل cp313t) موقع نصب چک می‌شود؛ خطاها با پیام فارسی و واضح
+    40→    اعلام می‌شوند، نه با خطای عجیب کامپایلر Rust.
+    41→  • حالت کنسلی برای حرفه‌ای‌ها:
+    42→        python launcher.py --build-bundle [--no-browsers]
+    43→        python launcher.py --install-offline
+    44→
+    45→این فایل فقط از کتابخانهٔ استاندارد پایتون استفاده می‌کند؛ پس حتی روی
+    46→سیستم کاملاً خام (بدون هیچ pip install) بالا می‌آید و می‌تواند خودش را
+    47→با بستهٔ آفلاین تعمیر کند.
+    48→"""
+    49→
+    50→from __future__ import annotations
+    51→
+    52→import importlib.util
+    53→import json
+    54→import os
+    55→import platform
+    56→import queue
+    57→import shutil
+    58→import subprocess
+    59→import sys
+    60→import sysconfig
+    61→import threading
+    62→import time
+    63→import urllib.request
+    64→import webbrowser
+    65→from pathlib import Path
+    66→from tkinter import BOTH, BOTTOM, END, LEFT, RIGHT, X, BooleanVar, messagebox, scrolledtext
+    67→import tkinter as tk
+    68→
+    69→BASE = Path(__file__).resolve().parent
+    70→HOST, PORT = "127.0.0.1", 8765
+    71→PANEL_URL = f"http://{HOST}:{PORT}"
+    72→HEALTH_URL = f"{PANEL_URL}/api/ready"
+    73→
+    74→# ── بستهٔ آفلاین ────────────────────────────────────────────────────
+    75→BUNDLE_DIR = BASE / "offline_bundle"
+    76→WHEELS_DIR = BUNDLE_DIR / "wheels"
+    77→PW_MIRROR = "https://cdn.npmmirror.com/binaries/playwright"
+    78→
+    79→# ماژول‌هایی که سرور پنل لازم دارد (نامِ ماژول ≠ نامِ پکیج pip)
+    80→REQUIRED = {
+    81→    "fastapi": "سرور وب پنل",
+    82→    "uvicorn": "اجرای سرور",
+    83→    "multipart": "آپلود فایل (پکیج: python-multipart)",
+    84→    "playwright": "اتوماسیون مرورگر",
+    85→}
+    86→
+    87→NO_WINDOW = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    88→
+    89→# ── رفع باگ گیرکردن ──────────────────────────────────────────────
+    90→# در ویندوز، urllib از پروکسیِ سیستمی (VPN و…) پیروی می‌کند و درخواستِ
+    91→# 127.0.0.1 می‌تواند داخل پروکسی گیر کند و هرگز به سرور محلی نرسد.
+    92→# این اوپنر بدون هیچ پروکسی، مستقیم به سرور محلی وصل می‌شود:
+    93→_DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    94→
+    95→
+    96→COLORS = {
+    97→    "bg": "#0b1220", "panel": "#111a2c", "card": "#16213a",
+    98→    "line": "#243356", "fg": "#dbe4f0", "muted": "#8fa3c0",
+    99→    "acc": "#10b981", "acc2": "#34d399", "warn": "#f59e0b", "err": "#f43f5e",
+   100→    "sky": "#38bdf8", "log_bg": "#060b16",
+   101→}
+   102→TAG_COLORS = {
+   103→    "ts": "#475569", "srv": "#7dd3fc", "pip": "#c4b5fd", "ok": "#34d399",
+   104→    "warn": "#fbbf24", "err": "#fb7185", "info": "#cbd5e1",
+   105→}
+   106→
+   107→
+   108→# ══════════════════════════════════════════════════════════════════ #
+   109→#  هستهٔ آفلاین (۲.۵.۰) — ساخت بسته و نصب بدون اینترنت
+   110→# ══════════════════════════════════════════════════════════════════ #
+   111→
+   112→def _console_log(kind: str, msg: str):
+   113→    print(f"[{kind}] {msg}", flush=True)
+   114→
+   115→
+   116→def _findable(name: str) -> bool:
+   117→    """آیا ماژول قابل ایمپورت است؟ (مقاوم به ماژول‌های بی-spec)"""
+   118→    try:
+   119→        return importlib.util.find_spec(name) is not None
+   120→    except Exception:
+   121→        return name in sys.modules
+   122→
+   123→
+   124→def check_missing() -> list:
+   125→    return [m for m in REQUIRED if not _findable(m)]
+   126→
+   127→
+   128→def _human(n) -> str:
+   129→    x = float(n)
+   130→    for unit in ("B", "KB", "MB", "GB", "TB"):
+   131→        if x < 1024:
+   132→            return f"{x:.1f} {unit}"
+   133→        x /= 1024
+   134→    return f"{x:.1f} PB"
+   135→
+   136→
+   137→def _dir_size(p: Path) -> int:
+   138→    if not p.exists():
+   139→        return 0
+   140→    return sum(f.stat().st_size for f in p.rglob("*") if f.is_file())
+   141→
+   142→
+   143→def _python_tag() -> str:
+   144→    return f"cp{sys.version_info[0]}{sys.version_info[1]}"
+   145→
+   146→
+   147→def _is_free_threaded() -> bool:
+   148→    """تشخیص پایتون free-threaded (مثل cp313t) که با wheelهای معمولی
+   149→    سازگار نیست — همان خطای عجیب «کامپایل Rust» که دیدید."""
+   150→    soabi = sysconfig.get_config_var("SOABI") or ""
+   151→    if soabi.split("-")[0].endswith("t"):
+   152→        return True
+   153→    try:
+   154→        return bool(int(sysconfig.get_config_var("Py_GIL_DISABLED") or 0))
+   155→    except Exception:
+   156→        return False
+   157→
+   158→
+   159→def _browsers_cache() -> Path:
+   160→    """محل کش مرورگرهای Playwright روی این سیستم."""
+   161→    env = os.environ.get("PLAYWRIGHT_BROWSERS_PATH")
+   162→    if env:
+   163→        return Path(env)
+   164→    if os.name == "nt":
+   165→        base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
+   166→        return Path(base) / "ms-playwright"
+   167→    return Path.home() / ".cache" / "ms-playwright"
+   168→
+   169→
+   170→def bundle_available() -> bool:
+   171→    return WHEELS_DIR.is_dir() and (BUNDLE_DIR / "requirements.txt").is_file()
+   172→
+   173→
+   174→def read_bundle_info():
+   175→    p = BUNDLE_DIR / "bundle_info.json"
+   176→    if not p.is_file():
+   177→        return None
+   178→    try:
+   179→        return json.loads(p.read_text(encoding="utf-8"))
+   180→    except Exception:
+   181→        return None
+   182→
+   183→
+   184→def compat_problems(info) -> list:
+   185→    """لیست ناسازگاری‌های سیستم فعلی با بستهٔ ساخته‌شده (خالی = مشکلی نیست)."""
+   186→    probs = []
+   187→    if _is_free_threaded():
+   188→        probs.append("پایتون این سیستم از نوع free-threaded است (شناسه‌ای مثل cp313t). "
+   189→                     "wheelهای این بسته با آن سازگار نیستند؛ نسخهٔ «استاندارد» همان پایتون را "
+   190→                     "از python.org نصب کنید (تیک Add to PATH).")
+   191→    if info:
+   192→        if info.get("platform") and info["platform"] != platform.system():
+   193→            probs.append(f"بسته برای {info['platform']} ساخته شده ولی این سیستم "
+   194→                        f"{platform.system()} است.")
+   195→        mine = _python_tag()
+   196→        if info.get("python_tag") and mine != info["python_tag"]:
+   197→            probs.append(f"پایتون این سیستم {mine} است ولی بسته برای "
+   198→                        f"{info['python_tag']} ساخته شده — همان نسخهٔ پایتون را نصب کنید.")
+   199→        bits = 64 if platform.architecture()[0].startswith("64") else 32
+   200→        if info.get("bitness") and bits != info["bitness"]:
+   201→            probs.append(f"پایتون این سیستم {bits} بیتی است ولی بسته {info['bitness']} بیتی "
+   202→                         "ساخته شده است.")
+   203→    return probs
+   204→
+   205→
+   206→def disk_msg() -> str | None:
+   207→    """اگر فضای دیسک برای نصبِ بسته کافی نباشد، پیام فارسی برمی‌گرداند."""
+   208→    if not BUNDLE_DIR.is_dir():
+   209→        return None
+   210→    need = int(_dir_size(BUNDLE_DIR) * 1.15) + 50 * 1024 * 1024
+   211→    free = shutil.disk_usage(BASE).free
+   212→    if free < need:
+   213→        return (f"فضای خالی درایو کافی نیست — حجم بسته {_human(_dir_size(BUNDLE_DIR))} "
+   214→                f"است ولی فقط {_human(free)} آزاد دارید (خطای os error 112). "
+   215→                "اول فضا آزاد کنید.")
+   216→    return None
+   217→
+   218→
+   219→def _run_stream(cmd, log=_console_log, env=None) -> int:
+   220→    """اجرای فرمان با استریم زندهٔ خروجی در لاگ؛ کد خروج را برمی‌گرداند."""
+   221→    try:
+   222→        p = subprocess.Popen(
+   223→            [str(c) for c in cmd], cwd=str(BASE),
+   224→            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+   225→            text=True, encoding="utf-8", errors="replace",
+   226→            env=env or os.environ, creationflags=NO_WINDOW)
+   227→    except Exception as exc:
+   228→        log("err", f"اجرای فرمان ناموفق بود: {exc}")
+   229→        return 1
+   230→    for line in p.stdout:
+   231→        log("pip", line.rstrip())
+   232→    return p.wait()
+   233→
+   234→
+   235→def _has_chromium() -> bool:
+   236→    cache = _browsers_cache()
+   237→    return cache.is_dir() and any(cache.glob("chromium-*"))
+   238→
+   239→
+   240→def build_offline_bundle(include_browsers: bool = True, log=_console_log) -> str:
+   241→    """ساخت بستهٔ آفلاین داخل پروژه. خلاصه را برمی‌گرداند؛ در خطا RuntimeError."""
+   242→    req = BASE / "requirements.txt"
+   243→    if not req.is_file():
+   244→        raise RuntimeError("فایل requirements.txt کنار launcher.py پیدا نشد.")
+   245→
+   246→    need_gb = 2.5 if include_browsers else 1.2
+   247→    free_gb = shutil.disk_usage(BASE).free / 1024 ** 3
+   248→    if free_gb < need_gb:
+   249→        raise RuntimeError(f"فضای خالی کافی نیست — حداقل {need_gb:.1f} گیگابایت لازم است "
+   250→                           f"ولی الان {free_gb:.1f} گیگابایت آزاد است (خطای os error 112).")
+   251→
+   252→    BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
+   253→    WHEELS_DIR.mkdir(parents=True, exist_ok=True)
+   254→    shutil.copy2(req, BUNDLE_DIR / "requirements.txt")
+   255→
+   256→    # --- ۱) دانلود همهٔ پیش‌نیازها به‌صورت wheel آماده ---------------
+   257→    log("info", "۱) دانلود پیش‌نیازها به‌صورت wheel آماده (چند دقیقه)…")
+   258→    base = [sys.executable, "-m", "pip", "download", "-r", str(req),
+   259→            "-d", str(WHEELS_DIR), "--progress-bar", "off"]
+   260→    rc = _run_stream(base + ["--only-binary=:all:"], log=log)
+   261→    if rc != 0:
+   262→        log("warn", "دانلود با محدودیت wheel-only نشد؛ تلاش مجدد بدون محدودیت…")
+   263→        rc = _run_stream(base, log=log)
+   264→        if rc != 0:
+   265→            raise RuntimeError("دانلود پکیج‌ها از اینترنت ناموفق بود.")
+   266→        log("warn", "بعضی پکیج‌ها سورس‌اند و ممکن است روی سیستم مقصد کامپایلر بخواهند.")
+   267→    # خود pip هم داخل بسته باشد
+   268→    _run_stream([sys.executable, "-m", "pip", "download", "pip",
+   269→                 "-d", str(WHEELS_DIR), "--only-binary=:all:",
+   270→                 "--progress-bar", "off"], log=log)
+   271→
+   272→    # --- ۲) مرورگر کرومیوم (اختیاری) --------------------------------
+   273→    if include_browsers:
+   274→        log("info", "۲) آماده‌سازی مرورگر کرومیوم…")
+   275→        if not _findable("playwright"):
+   276→            log("info", "نصب موقت playwright از روی wheelهای تازه دانلودشده…")
+   277→            rc = _run_stream([sys.executable, "-m", "pip", "install", "--no-index",
+   278→                              "--find-links", str(WHEELS_DIR), "playwright",
+   279→                              "--progress-bar", "off"], log=log)
+   280→            if rc != 0:
+   281→                raise RuntimeError("نصب playwright از روی wheelها ناموفق بود.")
+   282→        if not _has_chromium():
+   283→            log("warn", "کرومیوم نصب نیست؛ دانلود از آینهٔ npmmirror (بدون فیلترشکن)…")
+   284→            env = {**os.environ, "PLAYWRIGHT_DOWNLOAD_HOST": PW_MIRROR}
+   285→            rc = _run_stream([sys.executable, "-m", "playwright", "install", "chromium"],
+   286→                             log=log, env=env)
+   287→            if rc != 0:
+   288→                raise RuntimeError("دانلود کرومیوم ناموفق بود.")
+   289→        src = _browsers_cache()
+   290→        if not src.is_dir():
+   291→            raise RuntimeError(f"پوشهٔ مرورگرهای Playwright پیدا نشد: {src}")
+   292→        dst = BUNDLE_DIR / "ms-playwright"
+   293→        dst.mkdir(parents=True, exist_ok=True)
+   294→        kept = [d.name for d in src.iterdir()
+   295→                if d.is_dir() and (d.name.startswith("chromium") or d.name.startswith("ffmpeg"))]
+   296→        if not kept:
+   297→            raise RuntimeError("در کش Playwright هیچ مرورگری برای کپی پیدا نشد.")
+   298→        for name in kept:
+   299→            shutil.copytree(src / name, dst / name, dirs_exist_ok=True)
+   300→        log("ok", "مرورگرها داخل بسته کپی شدند: " + "، ".join(kept))
+   301→    else:
+   302→        log("warn", "مرورگر داخل بسته نشد (حالت سبک) — نصب آفلاین بعداً از "
+   303→                   "Edge/Chrome خود ویندوز استفاده می‌کند.")
+   304→
+   305→    # --- ۳) شناسنامهٔ بسته ------------------------------------------
+   306→    info = {
+   307→        "platform": platform.system(),
+   308→        "python_version": platform.python_version(),
+   309→        "python_tag": _python_tag(),
+   310→        "soabi": sysconfig.get_config_var("SOABI"),
+   311→        "bitness": 64 if platform.architecture()[0].startswith("64") else 32,
+   312→        "with_browsers": include_browsers,
+   313→        "created": time.strftime("%Y-%m-%d %H:%M"),
+   314→        "app_version": "2.7.0",
+   315→    }
+   316→    (BUNDLE_DIR / "bundle_info.json").write_text(
+   317→        json.dumps(info, indent=2, ensure_ascii=False), encoding="utf-8")
+   318→
+   319→    n_whl = len(list(WHEELS_DIR.glob("*.whl")))
+   320→    w = _dir_size(WHEELS_DIR)
+   321→    b = _dir_size(BUNDLE_DIR / "ms-playwright")
+   322→    return (f"تعداد wheelها: {n_whl}\n"
+   323→            f"حجم wheelها: {_human(w)}\n"
+   324→            + (f"حجم مرورگرها: {_human(b)}\n" if b else "")
+   325→            + f"حجم کل بسته: {_human(w + b)}\n"
+   326→            f"محل بسته: {BUNDLE_DIR}")
+   327→
+   328→
+   329→def install_from_bundle(log=_console_log):
+   330→    """نصب کامل از بستهٔ آفلاین — بدون حتی یک بایت اینترنت.
+   331→    برمی‌گرداند: (موفق؟، لیست ماژول‌های همچنان نصب‌نشده)"""
+   332→    log("info", "نصب آفلاین از پوشهٔ offline_bundle (بدون اینترنت)…")
+   333→    rc = _run_stream([sys.executable, "-m", "pip", "install",
+   334→                      "--no-index", "--find-links", str(WHEELS_DIR),
+   335→                      "-r", str(BUNDLE_DIR / "requirements.txt"),
+   336→                      "--progress-bar", "off"], log=log)
+   337→    if rc != 0:
+   338→        log("err", "نصب پکیج‌ها از بسته ناموفق بود (لاگ بالا را ببینید).")
+   339→        return False, check_missing()
+   340→
+   341→    src = BUNDLE_DIR / "ms-playwright"
+   342→    if src.is_dir():
+   343→        dst = _browsers_cache()
+   344→        dst.mkdir(parents=True, exist_ok=True)
+   345→        for item in src.iterdir():
+   346→            if item.is_dir():
+   347→                shutil.copytree(item, dst / item.name, dirs_exist_ok=True)
+   348→            else:
+   349→                shutil.copy2(item, dst / item.name)
+   350→        log("ok", f"مرورگرها در محل Playwright کپی شدند: {dst}")
+   351→    else:
+   352→        log("warn", "بسته شامل مرورگر نیست — از Edge/Chrome خود ویندوز استفاده می‌شود.")
+   353→
+   354→    missing = check_missing()
+   355→    for m in REQUIRED:
+   356→        log("ok" if m not in missing else "err",
+   357→            f"ماژول {m}: " + ("نصب شد ✓" if m not in missing else "هنوز نصب نیست ✗"))
+   358→    return (not missing), missing
+   359→
+   360→
+   361→def server_up(timeout: float = 1.0) -> bool:
+   362→    """بررسی سلامت سرور — همیشه مستقیم و بدون پروکسی"""
+   363→    try:
+   364→        with _DIRECT.open(HEALTH_URL, timeout=timeout) as r:
+   365→            return r.status == 200
+   366→    except Exception:
+   367→        return False
+   368→
+   369→
+   370→class Launcher(tk.Tk):
+   371→    def __init__(self):
+   372→        super().__init__()
+   373→        self.title("ParsAgent — لانچر")
+   374→        self.geometry("800x640")
+   375→        self.minsize(700, 560)
+   376→        self.configure(bg=COLORS["bg"])
+   377→
+   378→        self.proc: subprocess.Popen | None = None
+   379→        self.installing = False
+   380→        self.stop_flag = False
+   381→        self.server_ready = False
+   382→        # صف امن نخ→رابط: در برخی سیستم‌ها (ویندوز/لینوکس) فراخوانی after از
+   383→        # نخِ دیگر بی‌صدا نادیده گرفته می‌شود و همین باعث «گیرکردن» لانچر
+   384→        # می‌شد؛ همهٔ به‌روزرسانی‌های UI از این صف در نخ اصلی اجرا می‌شوند.
+   385→        self.ui_q: "queue.Queue" = queue.Queue()
+   386→
+   387→        self._build_ui()
+   388→        self.protocol("WM_DELETE_WINDOW", self.on_close)
+   389→        self.after(60, self._pump)
+   390→        self.after(200, self.on_start)
+   391→
+   392→    # ------------------------------------------------------------------ #
+   393→    # پل امن نخ→رابط کاربری
+   394→    # ------------------------------------------------------------------ #
+   395→    def _pump(self):
+   396→        """در نخ اصلی اجرا می‌شود و کارهای صف‌شدهٔ نخ‌های دیگر را انجام می‌دهد"""
+   397→        try:
+   398→            while True:
+   399→                fn = self.ui_q.get_nowait()
+   400→                try:
+   401→                    fn()
+   402→                except Exception:
+   403→                    pass
+   404→        except queue.Empty:
+   405→            pass
+   406→        self.after(60, self._pump)
+   407→
+   408→    def post(self, fn):
+   409→        """اجرای امن یک تابع در نخ اصلی — از هر نخی قابل فراخوانی است"""
+   410→        self.ui_q.put(fn)
+   411→
+   412→    # ------------------------------------------------------------------ #
+   413→    # UI
+   414→    # ------------------------------------------------------------------ #
+   415→    def _build_ui(self):
+   416→        # --- هدر
+   417→        header = tk.Frame(self, bg="#080e1a")
+   418→        header.pack(fill=X)
+   419→        tk.Label(header, text="🤖 ParsAgent", font=("Segoe UI", 21, "bold"),
+   420→                 bg="#080e1a", fg=COLORS["acc"]).pack(anchor="e", padx=18,
+   421→                                                      pady=(14, 0))
+   422→        tk.Label(header, text="لانچر نصب و اجرای پنل کنترل — نسخهٔ ۲.۷.۰",
+   423→                 font=("Segoe UI", 10), bg="#080e1a",
+   424→                 fg=COLORS["muted"]).pack(anchor="e", padx=18, pady=(0, 14))
+   425→
+   426→        # --- نوار وضعیت
+   427→        status_bar = tk.Frame(self, bg=COLORS["panel"])
+   428→        status_bar.pack(fill=X, padx=14, pady=(12, 6))
+   429→        self.status_dot = tk.Label(status_bar, text="●", font=("Segoe UI", 12),
+   430→                                    bg=COLORS["panel"], fg=COLORS["muted"])
+   431→        self.status_dot.pack(side=RIGHT, padx=10, pady=8)
+   432→        self.status_lbl = tk.Label(status_bar, text="در حال بررسی وضعیت…",
+   433→                                   font=("Segoe UI", 11, "bold"),
+   434→                                   bg=COLORS["panel"], fg=COLORS["fg"])
+   435→        self.status_lbl.pack(side=RIGHT)
+   436→        self.link_lbl = tk.Label(status_bar, text=PANEL_URL,
+   437→                                 font=("Segoe UI", 10, "underline"),
+   438→                                 bg=COLORS["panel"], fg=COLORS["sky"],
+   439→                                 cursor="hand2")
+   440→        self.link_lbl.pack(side=LEFT, padx=10, pady=8)
+   441→        self.link_lbl.bind("<Button-1>", lambda e: self.open_panel())
+   442→
+   443→        # --- دکمه‌های اصلی
+   444→        btns = tk.Frame(self, bg=COLORS["bg"])
+   445→        btns.pack(fill=X, padx=14, pady=6)
+   446→        self.btn_run = self._big_button(btns, "🚀  اجرای سرور", self.start_server,
+   447→                                        bg=COLORS["acc"], fg="#04120c",
+   448→                                        font=("Segoe UI", 13, "bold"))
+   449→        self.btn_run.pack(side=RIGHT, fill=X, expand=True, padx=(0, 8), ipady=10)
+   450→        self.btn_panel = self._big_button(btns, "🌐  باز کردن پنل", self.open_panel,
+   451→                                          bg=COLORS["card"], fg=COLORS["fg"])
+   452→        self.btn_panel.pack(side=RIGHT, fill=X, expand=True, padx=8, ipady=10)
+   453→        self.btn_stop = self._big_button(btns, "⛔  توقف سرور", self.stop_server,
+   454→                                         bg=COLORS["card"], fg=COLORS["fg"])
+   455→        self.btn_stop.pack(side=RIGHT, fill=X, expand=True, padx=8, ipady=10)
+   456→
+   457→        # --- دکمه‌های ابزار
+   458→        tools = tk.Frame(self, bg=COLORS["bg"])
+   459→        tools.pack(fill=X, padx=14, pady=(2, 4))
+   460→        self.btn_install = self._tool_button(tools, "📦  نصب پیش‌نیازها",
+   461→                                              self.install_deps,
+   462→                                              bg="#1d2c1f", fg=COLORS["acc2"])
+   463→        self.btn_install.pack(side=RIGHT, padx=(0, 8))
+   464→        self.btn_pw = self._tool_button(tools, "🧭  نصب کرومیوم (آینه)",
+   465→                                        self.install_browser,
+   466→                                        bg=COLORS["card"], fg=COLORS["fg"])
+   467→        self.btn_pw.pack(side=RIGHT, padx=8)
+   468→        self.btn_clear = self._tool_button(tools, "🧹  پاک‌سازی لاگ",
+   469→                                           self.clear_log,
+   470→                                           bg=COLORS["card"], fg=COLORS["muted"])
+   471→        self.btn_clear.pack(side=RIGHT, padx=8)
+   472→
+   473→        # --- ابزارهای آفلاین (۲.۵.۰)
+   474→        offline = tk.Frame(self, bg=COLORS["bg"])
+   475→        offline.pack(fill=X, padx=14, pady=(0, 8))
+   476→        self.var_browsers = BooleanVar(value=True)
+   477→        self.btn_bundle = self._tool_button(offline, "💾  ساخت بستهٔ آفلاین",
+   478→                                            self.build_offline,
+   479→                                            bg="#1d2c1f", fg=COLORS["acc2"])
+   480→        self.btn_bundle.pack(side=RIGHT, padx=(0, 8))
+   481→        self.btn_offinstall = self._tool_button(offline, "📀  نصب آفلاین",
+   482→                                                self.install_offline_clicked,
+   483→                                                bg=COLORS["card"], fg=COLORS["sky"])
+   484→        self.btn_offinstall.pack(side=RIGHT, padx=8)
+   485→        self.chk_browsers = tk.Checkbutton(
+   486→            offline, text="مرورگر کرومیوم داخل بسته (~۷۰۰MB)",
+   487→            variable=self.var_browsers, font=("Segoe UI", 9),
+   488→            bg=COLORS["bg"], fg=COLORS["muted"],
+   489→            selectcolor=COLORS["card"], activebackground=COLORS["bg"],
+   490→            activeforeground=COLORS["fg"], cursor="hand2")
+   491→        self.chk_browsers.pack(side=LEFT, padx=6)
+   492→
+   493→        # --- جعبه لاگ
+   494→        self.txt = scrolledtext.ScrolledText(
+   495→            self, bg=COLORS["log_bg"], fg=COLORS["fg"], relief="flat",
+   496→            font=("Consolas", 9), state="disabled", wrap="word", borderwidth=0)
+   497→        self.txt.pack(fill=BOTH, expand=True, padx=14, pady=(2, 8))
+   498→        for tag, color in TAG_COLORS.items():
+   499→            self.txt.tag_configure(tag, foreground=color)
+   500→
+   501→        # --- فوتر
+   502→        footer = tk.Frame(self, bg="#080e1a")
+   503→        footer.pack(fill=X, side=BOTTOM)
+   504→        tk.Label(footer,
+   505→                 text="سرور فقط روی همین سیستم (127.0.0.1) در دسترس است — "
+   506→                      "نیازی به اینترنت ندارد",
+   507→                 font=("Segoe UI", 9), bg="#080e1a",
+   508→                 fg=COLORS["muted"]).pack(side=RIGHT, padx=14, pady=8)
+   509→        self.ws_dot = tk.Label(footer, text="○ پنل: بسته", font=("Segoe UI", 9),
+   510→                               bg="#080e1a", fg=COLORS["muted"])
+   511→        self.ws_dot.pack(side=LEFT, padx=14, pady=8)
+   512→
+   513→        self.set_running(False, unknown=True)
+   514→
+   515→    def _big_button(self, parent, text, cmd, bg, fg, font=("Segoe UI", 11)):
+   516→        b = tk.Label(parent, text=text, bg=bg, fg=fg, font=font,
+   517→                     cursor="hand2", padx=14, pady=6)
+   518→        b.bind("<Button-1>", lambda e: cmd())
+   519→        b.bind("<Enter>", lambda e: b.config(
+   520→            bg=COLORS["acc2"] if bg == COLORS["acc"] else "#1c2a4a"))
+   521→        b.bind("<Leave>", lambda e: b.config(bg=bg))
+   522→        return b
+   523→
+   524→    def _tool_button(self, parent, text, cmd, bg, fg):
+   525→        b = tk.Label(parent, text=text, bg=bg, fg=fg, font=("Segoe UI", 10),
+   526→                     cursor="hand2", padx=12, pady=6)
+   527→        b.bind("<Button-1>", lambda e: cmd())
+   528→        b.bind("<Enter>", lambda e: b.config(bg="#1c2a4a"))
+   529→        b.bind("<Leave>", lambda e: b.config(bg=bg))
+   530→        return b
+   531→
+   532→    # ------------------------------------------------------------------ #
+   533→    # لاگ
+   534→    # ------------------------------------------------------------------ #
+   535→    def log(self, kind: str, msg: str):
+   536→        ts = time.strftime("%H:%M:%S")
+   537→        self.txt.configure(state="normal")
+   538→        self.txt.insert(END, f"[{ts}] ", "ts")
+   539→        self.txt.insert(END, (msg or "") + "\n", kind if kind in TAG_COLORS else "info")
+   540→        self.txt.see(END)
+   541→        self.txt.configure(state="disabled")
+   542→
+   543→    def clear_log(self):
+   544→        self.txt.configure(state="normal")
+   545→        self.txt.delete("1.0", END)
+   546→        self.txt.configure(state="disabled")
+   547→
+   548→    def _lg(self, kind: str, msg: str):
+   549→        """لاگ امن از داخل نخ‌های کاری"""
+   550→        self.post(lambda k=kind, m=msg: self.log(k, m))
+   551→
+   552→    def set_status(self, text: str, color: str):
+   553→        self.status_lbl.config(text=text, fg=color)
+   554→        self.status_dot.config(fg=color)
+   555→
+   556→    def set_running(self, running: bool, unknown: bool = False):
+   557→        if unknown:
+   558→            self.set_status("در حال بررسی…", COLORS["muted"])
+   559→            return
+   560→        if running:
+   561→            self.btn_run.config(fg="#3f7c66")
+   562→            self.btn_stop.config(fg=COLORS["err"])
+   563→            self.btn_panel.config(fg=COLORS["sky"])
+   564→            self.ws_dot.config(text="● پنل: روشن", fg=COLORS["acc"])
+   565→            self.set_status("سرور در حال اجرا — پنل آماده است", COLORS["acc"])
+   566→        else:
+   567→            self.btn_run.config(fg=COLORS["fg"])
+   568→            self.btn_stop.config(fg=COLORS["muted"])
+   569→            self.btn_panel.config(fg=COLORS["muted"])
+   570→            self.ws_dot.config(text="○ پنل: بسته", fg=COLORS["muted"])
+   571→            self.set_status("سرور خاموش است", COLORS["muted"])
+   572→
+   573→    # ------------------------------------------------------------------ #
+   574→    # شروع
+   575→    # ------------------------------------------------------------------ #
+   576→    def on_start(self):
+   577→        self.log("info", "به لانچر پارس‌ایجنت خوش آمدی 👋")
+   578→        self.log("info", f"پوشه پروژه: {BASE}")
+   579→        if _is_free_threaded():
+   580→            self.log("err", "⚠ پایتون این سیستم free-threaded است (مثل cp313t) — "
+   581→                            "با wheelهای معمولی سازگار نیست!")
+   582→        missing = check_missing()
+   583→        if missing:
+   584→            names = "، ".join(
+   585→                f"{m} ({REQUIRED[m]})" for m in missing)
+   586→            self.log("warn", f"ماژول‌های نصب‌نشده: {names}")
+   587→            self.set_status(f"نیاز به نصب: {len(missing)} ماژول", COLORS["warn"])
+   588→            self.after(400, lambda: self._ask_install_smart(missing))
+   589→        else:
+   590→            self.log("ok", "همه پیش‌نیازها نصب هستند ✓")
+   591→            self.set_running(False)
+   592→            if server_up(0.6):
+   593→                self.log("ok", "سرور از قبل روشن است — پنل در دسترس است")
+   594→                self.server_ready = True
+   595→                self.set_running(True)
+   596→
+   597→    def _ask_install_smart(self, missing):
+   598→        """اگر بستهٔ آفلاین کنار پروژه بود، اول نصب بدون اینترنت پیشنهاد می‌شود."""
+   599→        if bundle_available():
+   600→            if messagebox.askyesno(
+   601→                    "نصب آفلاین",
+   602→                    "برای اجرای پنل چند پکیج لازم است:\n\n"
+   603→                    + "\n".join(f"• {m} — {REQUIRED[m]}" for m in missing)
+   604→                    + "\n\nپوشهٔ بستهٔ آفلاین (offline_bundle) کنار پروژه پیدا شد.\n"
+   605→                      "نصب بدون اینترنت از همین بسته انجام شود؟"):
+   606→                self.install_offline_clicked(auto_start=True)
+   607→                return
+   608→            self.log("info", "برای نصب اینترنتی، دکمهٔ «📦 نصب پیش‌نیازها» را بزن")
+   609→            return
+   610→        self._ask_install(missing)
+   611→
+   612→    def _ask_install(self, missing):
+   613→        if messagebox.askyesno(
+   614→                "نصب پیش‌نیازها",
+   615→                "برای اجرای پنل چند پکیج لازم است:\n\n"
+   616→                + "\n".join(f"• {m} — {REQUIRED[m]}" for m in missing)
+   617→                + "\n\nهم‌اکنون نصب شوند؟ (به اینترنت نیاز دارد)"):
+   618→            self.install_deps()
+   619→        else:
+   620→            self.log("warn", "بدون این ماژول‌ها سرور اجرا نمی‌شود")
+   621→
+   622→    # ------------------------------------------------------------------ #
+   623→    # نصب (اینترنتی)
+   624→    # ------------------------------------------------------------------ #
+   625→    def _run_async(self, cmd, env=None, on_done=None, cwd=None):
+   626→        def work():
+   627→            try:
+   628→                p = subprocess.Popen(
+   629→                    cmd, cwd=str(cwd or BASE),
+   630→                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+   631→                    text=True, encoding="utf-8", errors="replace",
+   632→                    env=env or os.environ, creationflags=NO_WINDOW)
+   633→                for line in p.stdout:
+   634→                    self.post(lambda l=line: self.log("pip", l.rstrip()))
+   635→                code = p.wait()
+   636→                self.post(lambda: on_done(code == 0) if on_done else None)
+   637→            except Exception as exc:
+   638→                self.post(lambda: self.log("err", f"خطا: {exc}"))
+   639→                self.post(lambda: on_done(False) if on_done else None)
+   640→        threading.Thread(target=work, daemon=True).start()
+   641→
+   642→    def install_deps(self):
+   643→        if self.installing:
+   644→            return
+   645→        if self.proc and self.proc.poll() is None:
+   646→            messagebox.showwarning("در حال اجرا",
+   647→                                   "اول سرور را متوقف کن، بعد نصب را بزن")
+   648→            return
+   649→        self.installing = True
+   650→        self.set_status("در حال نصب پیش‌نیازها…", COLORS["sky"])
+   651→        self.log("info", "شروع نصب پیش‌نیازها (ممکن است چند دقیقه طول بکشد)…")
+   652→        env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+   653→        self._run_async(
+   654→            [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"],
+   655→            env=env, on_done=self._after_install)
+   656→
+   657→    def _after_install(self, ok: bool):
+   658→        self.installing = False
+   659→        missing = check_missing()
+   660→        if not missing:
+   661→            self.log("ok", "نصب کامل شد ✓ — حالا «اجرای سرور» را بزن")
+   662→            self.set_running(False)
+   663→            if messagebox.askyesno("نصب کامل",
+   664→                                   "همه پیش‌نیازها نصب شد ✓\n\nسرور الان اجرا شود؟"):
+   665→                self.start_server()
+   666→        else:
+   667→            self.log("err", "بعضی ماژول‌ها هنوز نصب نشده‌اند: "
+   668→                     + "، ".join(missing))
+   669→            self.set_status("نصب ناقص", COLORS["err"])
+   670→
+   671→    def install_browser(self):
+   672→        """نصب کرومیوم Playwright از آینهٔ چینی (بدون فیلترشکن).
+   673→
+   674→        فقط وقتی لازم است که نه Edge داشته باشی نه Chrome —
+   675→        لانچر مقاوم خودکار اول از مرورگرهای نصب‌شده استفاده می‌کند.
+   676→        """
+   677→        if messagebox.askyesno(
+   678→                "نصب کرومیوم",
+   679→                "کرومیوم باندل Playwright از آینهٔ npmmirror دانلود شود؟\n\n"
+   680→                "نکته: اگر روی ویندوزت Edge یا Chrome نصب است،\n"
+   681→                "این مرحله اصلاً لازم نیست — ایجنت خودش از همان‌ها استفاده می‌کند."):
+   682→            self.log("info", f"نصب کرومیوم از آینه: {PW_MIRROR}")
+   683→            env = {**os.environ, "PLAYWRIGHT_DOWNLOAD_HOST": PW_MIRROR,
+   684→                   "PYTHONIOENCODING": "utf-8"}
+   685→            self._run_async(
+   686→                [sys.executable, "-m", "playwright", "install", "chromium"],
+   687→                env=env, on_done=lambda ok: self.log(
+   688→                    "ok" if ok else "err",
+   689→                    "نصب کرومیوم تمام شد ✓" if ok
+   690→                    else "نصب کرومیوم ناموفق بود — لاگ بالا را ببین"))
+   691→
+   692→    # ------------------------------------------------------------------ #
+   693→    # ابزارهای آفلاین (۲.۵.۰)
+   694→    # ------------------------------------------------------------------ #
+   695→    def build_offline(self):
+   696→        if self.installing:
+   697→            messagebox.showinfo("مشغول", "یک نصب/ساخت دیگر در جریان است")
+   698→            return
+   699→        if self.proc and self.proc.poll() is None:
+   700→            messagebox.showwarning("در حال اجرا",
+   701→                                   "اول سرور را متوقف کن، بعد بسته را بساز")
+   702→            return
+   703→        include = self.var_browsers.get()
+   704→        if not messagebox.askyesno(
+   705→                "ساخت بستهٔ آفلاین",
+   706→                "همهٔ پیش‌نیازها به‌صورت wheel آماده"
+   707→                + (" + مرورگر کرومیوم" if include else "")
+   708→                + " داخل پوشهٔ پروژه (offline_bundle) ذخیره شوند؟\n\n"
+   709→                  "برای انتقال به سیستم بدون اینترنت است؛ دانلودها چند دقیقه "
+   710→                  "طول می‌کشد."):
+   711→            return
+   712→        self.installing = True
+   713→        self.set_status("در حال ساخت بستهٔ آفلاین…", COLORS["sky"])
+   714→        self.log("info", "شروع ساخت بستهٔ آفلاین…")
+   715→
+   716→        def work():
+   717→            try:
+   718→                summary = build_offline_bundle(include, self._lg)
+   719→                self.post(lambda: self._bundle_done(summary))
+   720→            except Exception as exc:
+   721→                self.post(lambda e=exc: self._offline_failed("ساخت بسته", e))
+   722→        threading.Thread(target=work, daemon=True).start()
+   723→
+   724→    def _bundle_done(self, summary: str):
+   725→        self.installing = False
+   726→        self.set_status("بستهٔ آفلاین آماده شد", COLORS["acc"])
+   727→        self.log("ok", "بستهٔ آفلاین ساخته شد ✓")
+   728→        messagebox.showinfo(
+   729→            "ساخت بسته ✓",
+   730→            "بستهٔ آفلاین ساخته شد ✅\n\n" + summary +
+   731→            "\n\nکل پوشهٔ پروژه را به سیستم مقصد کپی کن و در همان‌جا "
+   732→            "«📀 نصب آفلاین» را بزن (یا:  python launcher.py --install-offline)")
+   733→
+   734→    def _offline_failed(self, what: str, exc: Exception):
+   735→        self.installing = False
+   736→        self.set_status(f"{what} ناموفق", COLORS["err"])
+   737→        self.log("err", f"{what} ناموفق: {exc}")
+   738→        messagebox.showerror(what, str(exc))
+   739→
+   740→    def install_offline_clicked(self, auto_start: bool = False):
+   741→        if self.installing:
+   742→            messagebox.showinfo("مشغول", "یک نصب/ساخت دیگر در جریان است")
+   743→            return
+   744→        if self.proc and self.proc.poll() is None:
+   745→            messagebox.showwarning("در حال اجرا",
+   746→                                   "اول سرور را متوقف کن، بعد نصب را بزن")
+   747→            return
+   748→        if not bundle_available():
+   749→            messagebox.showerror(
+   750→                "بسته پیدا نشد",
+   751→                "پوشهٔ offline_bundle کنار پروژه نیست.\n"
+   752→                "اول روی یک سیستم اینترنت‌دار با «💾 ساخت بستهٔ آفلاین» "
+   753→                "آن را بساز و کل پوشهٔ پروژه را انتقال بده.")
+   754→            return
+   755→        probs = compat_problems(read_bundle_info())
+   756→        if probs and not messagebox.askyesno(
+   757→                "⚠ ناسازگاری بسته",
+   758→                "با این بستهٔ آفلاین ناسازگاری وجود دارد:\n\n"
+   759→                + "\n".join(probs)
+   760→                + "\n\nبه‌هرحال ادامه بدهی؟"):
+   761→            self.log("warn", "نصب آفلاین به دلیل ناسازگاری لغو شد")
+   762→            return
+   763→        msg = disk_msg()
+   764→        if msg:
+   765→            messagebox.showerror("فضای دیسک", msg)
+   766→            return
+   767→        self.installing = True
+   768→        self.set_status("در حال نصب آفلاین (بدون اینترنت)…", COLORS["sky"])
+   769→        self.log("info", "شروع نصب آفلاین…")
+   770→
+   771→        def work():
+   772→            try:
+   773→                ok, missing = install_from_bundle(self._lg)
+   774→                self.post(lambda: self._offinstall_done(ok, missing, auto_start))
+   775→            except Exception as exc:
+   776→                self.post(lambda e=exc: self._offline_failed("نصب آفلاین", e))
+   777→        threading.Thread(target=work, daemon=True).start()
+   778→
+   779→    def _offinstall_done(self, ok: bool, missing: list, auto_start: bool):
+   780→        self.installing = False
+   781→        if ok:
+   782→            self.set_running(False)
+   783→            self.log("ok", "نصب آفلاین کامل شد ✓")
+   784→            if auto_start or messagebox.askyesno(
+   785→                    "نصب کامل ✓",
+   786→                    "همهٔ پیش‌نیازها بدون اینترنت نصب شد ✓\n\nسرور الان اجرا شود؟"):
+   787→                self.start_server()
+   788→        else:
+   789→            self.set_status("نصب ناقص", COLORS["err"])
+   790→            self.log("err", "این ماژول‌ها هنوز نصب نیستند: " + "، ".join(missing))
+   791→            messagebox.showerror("نصب ناقص",
+   792→                                 "این ماژول‌ها نصب نشدند:\n" + "، ".join(missing))
+   793→
+   794→    # ------------------------------------------------------------------ #
+   795→    # اجرای سرور
+   796→    # ------------------------------------------------------------------ #
+   797→    def start_server(self):
+   798→        if self.installing:
+   799→            messagebox.showinfo("در حال نصب",
+   800→                                "صبر کن نصب پیش‌نیازها تمام شود")
+   801→            return
+   802→        if self.proc and self.proc.poll() is None:
+   803→            self.log("info", "سرور از قبل در حال اجراست — پنل باز می‌شود")
+   804→            webbrowser.open(PANEL_URL)
+   805→            return
+   806→        # اگر سرورِ دیگری (مثلاً از اجرای قبلی) روی پورت روشن است:
+   807→        if server_up(0.8):
+   808→            self.log("ok", "یک نسخه از سرور روی این پورت در حال اجراست — پنل باز می‌شود")
+   809→            self.server_ready = True
+   810→            self.set_running(True)
+   811→            webbrowser.open(PANEL_URL)
+   812→            return
+   813→        if check_missing():
+   814→            self._ask_install_smart(check_missing())
+   815→            return
+   816→
+   817→        self.server_ready = False
+   818→        self.log("info", f"راه‌اندازی سرور پنل روی {PANEL_URL} …")
+   819→        self.set_status("در حال راه‌اندازی سرور…", COLORS["sky"])
+   820→        env = {**os.environ, "PYTHONIOENCODING": "utf-8",
+   821→               "NO_COLOR": "1",
+   822→               "NO_PROXY": "127.0.0.1,localhost",
+   823→               "no_proxy": "127.0.0.1,localhost"}
+   824→        try:
+   825→            # خروجی سرور گرفته می‌شود تا هر خطری در لاگ لانچر دیده شود
+   826→            self.proc = subprocess.Popen(
+   827→                [sys.executable, "-u", str(BASE / "panel_server.py")],
+   828→                cwd=str(BASE), stdout=subprocess.PIPE,
+   829→                stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+   830→                errors="replace", env=env, creationflags=NO_WINDOW)
+   831→        except Exception as exc:
+   832→            self.log("err", f"اجرای سرور ناموفق: {exc}")
+   833→            self.set_status("اجرای سرور ناموفق", COLORS["err"])
+   834→            return
+   835→
+   836→        self.log("ok", f"پروسهٔ سرور شروع شد (PID {self.proc.pid}) — منتظر آماده‌شدن…")
+   837→        threading.Thread(target=self._pipe_logs, daemon=True).start()
+   838→        threading.Thread(target=self._wait_until_up, daemon=True).start()
+   839→
+   840→    def _pipe_logs(self):
+   841→        """خروجی زندهٔ سرور در لاگ لانچر (خطاها دیگر مخفی نیستند)"""
+   842→        proc = self.proc
+   843→        if not proc or not proc.stdout:
+   844→            return
+   845→        for line in proc.stdout:
+   846→            if self.stop_flag:
+   847→                break
+   848→            self.post(lambda l=line: self.log("srv", l.rstrip()))
+   849→        code = proc.wait()
+   850→
+   851→        def done():
+   852→            if self.stop_flag:
+   853→                return
+   854→            if self.server_ready:
+   855→                self.set_running(False)
+   856→                self.log("warn", f"پروسهٔ سرور تمام شد (کد {code})")
+   857→            else:
+   858→                self.set_status("❌ سرور بالا نیامد — لاگ بالا را ببینید", COLORS["err"])
+   859→                self.log("err", f"سرور قبل از آماده‌شدن بسته شد (کد {code})")
+   860→                self.log("info", "راهنما: خروجی سرور در همین لاگ بالاست؛ "
+   861→                         "برای جزئیات بیشتر این را در ترمینال اجرا کن:  python panel_server.py")
+   862→        self.post(done)
+   863→
+   864→    def _wait_until_up(self):
+   865→        for _ in range(180):                        # حداکثر ~۹۰ ثانیه
+   866→            if self.stop_flag or self.server_ready:
+   867→                return
+   868→            if self.proc and self.proc.poll() is not None:
+   869→                return                              # خطا در _pipe_logs گزارش می‌شود
+   870→            if server_up(0.8):
+   871→                self.post(self._on_server_up)
+   872→                return
+   873→            time.sleep(0.5)
+   874→        if self.stop_flag or self.server_ready:
+   875→            return
+   876→
+   877→        def fail():
+   878→            self.set_status("سرور در ۹۰ ثانیه پاسخ نداد", COLORS["err"])
+   879→            self.log("err", "سرور در ۹۰ ثانیه آماده نشد — چند نکته:")
+   880→            self.log("info", "• لاگ بالا را ببین؛ اگر خطای ماژول است، «نصب پیش‌نیازها» را بزن")
+   881→            self.log("info", "• اگر پنل قبلاً در مرورگر باز بوده، «🌐 باز کردن پنل» را امتحان کن")
+   882→            self.log("info", "• شاید پورت 8765 اشغال است: با  set PANEL_PORT=8800  و اجرای مجدد امتحان کن")
+   883→            self.log("info", "• راه نهایی: در ترمینال  python panel_server.py  را اجرا کن تا خطا کامل دیده شود")
+   884→        self.post(fail)
+   885→
+   886→    def _on_server_up(self):
+   887→        self.server_ready = True
+   888→        self.log("ok", f"سرور آماده است ✓ — باز کردن پنل: {PANEL_URL}")
+   889→        self.set_running(True)
+   890→        self.after(500, lambda: webbrowser.open(PANEL_URL))
+   891→
+   892→    def stop_server(self):
+   893→        if not (self.proc and self.proc.poll() is None):
+   894→            self.log("info", "سرور در حال اجرا نیست")
+   895→            self.set_running(False)
+   896→            return
+   897→        self.log("warn", "در حال توقف سرور (مرورگرهای باز هم بسته می‌شوند)…")
+   898→        try:
+   899→            if os.name == "nt":
+   900→                subprocess.run(
+   901→                    ["taskkill", "/F", "/T", "/PID", str(self.proc.pid)],
+   902→                    capture_output=True, creationflags=NO_WINDOW)
+   903→            else:
+   904→                self.proc.terminate()
+   905→        except Exception as exc:
+   906→            self.log("err", f"توقف ناموفق: {exc}")
+   907→        self.server_ready = False
+   908→
+   909→    def open_panel(self):
+   910→        if server_up(0.8):
+   911→            webbrowser.open(PANEL_URL)
+   912→        else:
+   913→            messagebox.showinfo("سرور خاموش است",
+   914→                                "اول دکمهٔ «اجرای سرور» را بزن")
+   915→
+   916→    # ------------------------------------------------------------------ #
+   917→    def on_close(self):
+   918→        if self.proc and self.proc.poll() is None:
+   919→            if messagebox.askyesno(
+   920→                    "سرور در حال اجراست",
+   921→                    "با بستن لانچر، سرور و پنل هم خاموش شوند؟",
+   922→                    icon="question"):
+   923→                self.stop_flag = True
+   924→                self.stop_server()
+   925→        self.destroy()
+   926→
+   927→
+   928→# ══════════════════════════════════════════════════════════════════ #
+   929→#  حالت کنسلی — بدون رابط گرافیکی
+   930→# ══════════════════════════════════════════════════════════════════ #
+   931→
+   932→def _console_mode(argv: list) -> int | None:
+   933→    """اگر یکی از سوییچ‌های کنسلی خواسته شده بود، اجرا و کد خروج را برگردان؛
+   934→    اگر GUI لازم است None."""
+   935→    if "--build-bundle" in argv:
+   936→        include = "--no-browsers" not in argv
+   937→        try:
+   938→            print(build_offline_bundle(include, _console_log))
+   939→            print("\n✅ بستهٔ آفلاین ساخته شد.")
+   940→            return 0
+   941→        except Exception as exc:
+   942→            print(f"[err] {exc}")
+   943→            return 1
+   944→    if "--install-offline" in argv:
+   945→        if not bundle_available():
+   946→            print("[err] پوشهٔ offline_bundle کنار پروژه پیدا نشد.")
+   947→            return 1
+   948→        probs = compat_problems(read_bundle_info())
+   949→        if probs:
+   950→            for p in probs:
+   951→                print(f"[err] {p}")
+   952→            return 1
+   953→        msg = disk_msg()
+   954→        if msg:
+   955→            print(f"[err] {msg}")
+   956→            return 1
+   957→        ok, _missing = install_from_bundle(_console_log)
+   958→        return 0 if ok else 1
+   959→    if argv and argv[0] in ("-h", "--help"):
+   960→        print(__doc__)
+   961→        return 0
+   962→    return None
+   963→
+   964→
+   965→def main() -> int:
+   966→    code = _console_mode(sys.argv[1:])
+   967→    if code is not None:
+   968→        return code
+   969→    Launcher().mainloop()
+   970→    return 0
+   971→
+   972→
+   973→if __name__ == "__main__":
+   974→    raise SystemExit(main())
+   975→

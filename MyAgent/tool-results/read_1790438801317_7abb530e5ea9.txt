@@ -1,0 +1,912 @@
+     1→// -----------------------------------------------------------------------------
+     2→// ParsAgent Web Panel — in-memory agent simulation store.
+     3→//
+     4→// This powers the web control panel while running inside the browser sandbox:
+     5→// every capability of the real Windows agent (resilient browser launcher with
+     6→// per-platform persistent profiles, task engine, macro recorder/player,
+     7→// desktop system actions, scheduler, settings) is simulated faithfully so the
+     8→// panel behaves exactly like it would against `python main.py gateway`.
+     9→// -----------------------------------------------------------------------------
+    10→
+    11→import {
+    12→  PLATFORMS as CATALOG,
+    13→  SPEEDS,
+    14→  buildScript,
+    15→  getPlatform,
+    16→  type ActionDef,
+    17→  type EngineId,
+    18→  type SpeedId,
+    19→} from "@/components/agent/data";
+    20→import type {
+    21→  Macro,
+    22→  MacroEvent,
+    23→  PanelActionType,
+    24→  PanelLogLevel,
+    25→  PanelLog,
+    26→  PanelSettings,
+    27→  PanelState,
+    28→  PanelTask,
+    29→  PlaybackState,
+    30→  PlatformRuntime,
+    31→  ScheduleSpec,
+    32→  SystemSnapshot,
+    33→  TaskStepState,
+    34→} from "./types";
+    35→
+    36→const VERSION = "v1.0.0";
+    37→const MAX_LOGS = 400;
+    38→const MAX_EVENTS = 240;
+    39→
+    40→function now(): number {
+    41→  return Date.now();
+    42→}
+    43→
+    44→function ts(): string {
+    45→  return new Date().toLocaleTimeString("en-GB", { hour12: false });
+    46→}
+    47→
+    48→function rand(min: number, max: number): number {
+    49→  return min + Math.random() * (max - min);
+    50→}
+    51→
+    52→function randInt(min: number, max: number): number {
+    53→  return Math.floor(rand(min, max + 1));
+    54→}
+    55→
+    56→function clamp(v: number, min: number, max: number): number {
+    57→  return Math.min(max, Math.max(min, v));
+    58→}
+    59→
+    60→function pick<T>(arr: T[]): T {
+    61→  return arr[randInt(0, arr.length - 1)];
+    62→}
+    63→
+    64→function logTimestamp(d: Date): string {
+    65→  return d.toLocaleTimeString("en-GB", { hour12: false });
+    66→}
+    67→
+    68→function pad(n: number): string {
+    69→  return String(n).padStart(2, "0");
+    70→}
+    71→
+    72→const DEFAULT_SETTINGS: PanelSettings = {
+    73→  channelFallbacks: ["msedge", "chrome", "chromium"],
+    74→  headless: false,
+    75→  proxy: "",
+    76→  human: {
+    77→    enabled: true,
+    78→    minDelayS: 0.35,
+    79→    maxDelayS: 1.4,
+    80→    typingMinMs: 35,
+    81→    typingMaxMs: 95,
+    82→  },
+    83→  gateway: {
+    84→    url: "ws://127.0.0.1:3030",
+    85→    token: "change-me",
+    86→  },
+    87→};
+    88→
+    89→const SAMPLE_TEXTS = [
+    90→  "سلام! این پیام خودکار از پارس‌ایجنت است 🤖",
+    91→  "گزارش امروز آماده شد ✅",
+    92→  "یادآوری جلسه ساعت ۱۴",
+    93→  "دنبال کردن اخبار فناوری",
+    94→  "parsagent",
+    95→];
+    96→
+    97→const HOTKEY_SAMPLES = [
+    98→  ["ctrl", "c"],
+    99→  ["ctrl", "v"],
+   100→  ["ctrl", "shift", "esc"],
+   101→  ["win", "d"],
+   102→  ["alt", "tab"],
+   103→];
+   104→
+   105→// --------------------------------------------------------------------------- //
+   106→
+   107→export class PanelStore {
+   108→  private logs: PanelLog[] = [];
+   109→  private logSeq = 0;
+   110→
+   111→  private platforms: Map<string, PlatformRuntime>;
+   112→  private tasks: PanelTask[] = [];
+   113→  private taskSeq = 0;
+   114→
+   115→  private macros: Macro[] = [];
+   116→  private macroSeq = 0;
+   117→
+   118→  private recorderEvents: MacroEvent[] = [];
+   119→  private recorderActive = false;
+   120→  private recorderStartedAt: number | null = null;
+   121→
+   122→  private playback: PlaybackState | null = null;
+   123→
+   124→  private settings: PanelSettings = structuredClone(DEFAULT_SETTINGS);
+   125→
+   126→  private system: SystemSnapshot = {
+   127→    cpu: 8,
+   128→    ram: 38,
+   129→    mouse: { x: 960, y: 540 },
+   130→    clipboard: "https://github.com/pars-agent/parsagent",
+   131→    resolution: { w: 1920, h: 1080 },
+   132→    uptimeS: 0,
+   133→  };
+   134→
+   135→  private startedAt = now();
+   136→  private lastTick = now();
+   137→  private screenshotSeq = 0;
+   138→  private playbackLogged = 0;
+   139→
+   140→  constructor() {
+   141→    this.platforms = new Map(
+   142→      CATALOG.map((p) => [
+   143→        p.id,
+   144→        {
+   145→          id: p.id,
+   146→          running: false,
+   147→          loggedIn: false,
+   148→          loggingIn: false,
+   149→          loginStartedAt: null,
+   150→          loginDurationMs: 9000,
+   151→          channel: null,
+   152→          profile: `data/profiles/${p.id}`,
+   153→          lastAction: null,
+   154→          lastActiveAt: null,
+   155→          sessionAgeMin: 0,
+   156→        } satisfies PlatformRuntime,
+   157→      ]),
+   158→    );
+   159→    this.log("gate", "ok", `pars-agent ${VERSION} — web panel link established (simulator mode)`);
+   160→    this.log("gate", "info", "waiting for commands… (مرورگر وب به ایجنت متصل شد)");
+   161→  }
+   162→
+   163→  // ------------------------------------------------------------------ logs --
+   164→  private log(tag: string, level: PanelLogLevel, text: string): PanelLog {
+   165→    const entry: PanelLog = { id: ++this.logSeq, ts: ts(), tag, level, text };
+   166→    this.logs.push(entry);
+   167→    if (this.logs.length > MAX_LOGS) this.logs.splice(0, this.logs.length - MAX_LOGS);
+   168→    return entry;
+   169→  }
+   170→
+   171→  // ------------------------------------------------------------------ tick --
+   172→  /** Advances the simulation. `dt` is capped so long tab sleeps don't jump. */
+   173→  tick(): void {
+   174→    const t = now();
+   175→    let dt = t - this.lastTick;
+   176→    this.lastTick = t;
+   177→    if (dt <= 0) return;
+   178→    if (dt > 6000) dt = 6000;
+   179→    const dtS = dt / 1000;
+   180→
+   181→    this.system.uptimeS += dtS;
+   182→
+   183→    // ---- vitals random-walk (busier when tasks are running) ----
+   184→    const activeTasks = this.tasks.filter((task) => task.status === "running").length;
+   185→    const load = 6 + activeTasks * 22 + (this.recorderActive ? 6 : 0);
+   186→    this.system.cpu = clamp(this.system.cpu + rand(-4, 4) + (load - this.system.cpu) * 0.08, 2, 97);
+   187→    this.system.ram = clamp(this.system.ram + rand(-1.5, 1.6), 24, 88);
+   188→
+   189→    // ---- login flows ----
+   190→    for (const p of this.platforms.values()) {
+   191→      if (!p.loggingIn) {
+   192→        if (p.loggedIn) p.sessionAgeMin += dtS / 60;
+   193→        continue;
+   194→      }
+   195→      const elapsed = t - (p.loginStartedAt ?? t);
+   196→      const dur = p.loginDurationMs;
+   197→      // staged progress logs at 35% and 70%
+   198→      if (elapsed >= dur * 0.35 && elapsed - dt < dur * 0.35) {
+   199→        this.log(p.id, "info", "waiting for your login in the opened window…");
+   200→      }
+   201→      if (elapsed >= dur * 0.7 && elapsed - dt < dur * 0.7) {
+   202→        this.log("playwright", "info", "storage state captured (localStorage + cookies)");
+   203→      }
+   204→      if (elapsed >= dur) {
+   205→        p.loggingIn = false;
+   206→        p.loggedIn = true;
+   207→        p.running = true;
+   208→        p.channel = p.channel ?? this.settings.channelFallbacks[0];
+   209→        p.sessionAgeMin = 0;
+   210→        p.lastActiveAt = t;
+   211→        this.log(p.id, "ok", `login complete — session saved → data/sessions/${p.id}.json`);
+   212→        this.log("playwright", "ok", "persistent profile will skip login next time");
+   213→      }
+   214→    }
+   215→
+   216→    // ---- tasks ----
+   217→    for (const task of this.tasks) {
+   218→      if (task.status === "running") this.advanceTask(task, dt, t);
+   219→      // scheduler
+   220→      if (
+   221→        task.status !== "running" &&
+   222→        task.schedule.type !== "manual" &&
+   223→        task.nextRunAt !== null &&
+   224→        t >= task.nextRunAt
+   225→      ) {
+   226→        this.log("scheduler", "info", `schedule triggered → ${task.name}`);
+   227→        this.startTask(task, t);
+   228→      }
+   229→    }
+   230→
+   231→    // ---- recorder ----
+   232→    if (this.recorderActive) this.generateRecordEvents(dt, t);
+   233→
+   234→    // ---- playback ----
+   235→    if (this.playback) {
+   236→      const pb = this.playback;
+   237→      const elapsed = t - pb.startedAt;
+   238→      const frac = clamp(elapsed / pb.durationMs, 0, 1);
+   239→      // move the simulated mouse along the macro path
+   240→      const macro = this.macros.find((m) => m.id === pb.macroId);
+   241→      if (macro) {
+   242→        const idx = Math.min(
+   243→          macro.events.length - 1,
+   244→          Math.floor(frac * macro.events.length),
+   245→        );
+   246→        const ev = macro.events[idx];
+   247→        if (ev && ev.x !== undefined && ev.y !== undefined) {
+   248→          this.system.mouse = { x: ev.x, y: ev.y };
+   249→        }
+   250→      }
+   251→      const quarter = Math.floor(frac * 4);
+   252→      if (quarter > this.playbackLogged && quarter < 4) {
+   253→        this.playbackLogged = quarter;
+   254→        this.log(
+   255→          "desktop",
+   256→          "info",
+   257→          `replaying ${macro?.name ?? "macro"} — event ${Math.floor(frac * (pb.totalEvents || 1))}/${pb.totalEvents}`,
+   258→        );
+   259→      }
+   260→      if (elapsed >= pb.durationMs) {
+   261→        const macroName = pb.macroName;
+   262→        this.playback = null;
+   263→        this.playbackLogged = 0;
+   264→        this.log("desktop", "ok", `macro replayed — ${macroName} (${pb.totalEvents} events at ×${pb.speed})`);
+   265→      }
+   266→    }
+   267→  }
+   268→
+   269→  // ------------------------------------------------------------- recorder --
+   270→  private generateRecordEvents(dt: number, t: number): void {
+   271→    const count = Math.min(4, Math.floor(dt / 550) + (Math.random() < 0.6 ? 1 : 0));
+   272→    for (let i = 0; i < count; i++) {
+   273→      const rel = Math.max(0, (this.recorderStartedAt ? t - this.recorderStartedAt : 0) - (count - i) * (dt / count));
+   274→      const roll = Math.random();
+   275→      if (roll < 0.66) {
+   276→        // wandering mouse move
+   277→        const nx = clamp(this.system.mouse.x + rand(-260, 260), 60, 1860);
+   278→        const ny = clamp(this.system.mouse.y + rand(-180, 180), 40, 1040);
+   279→        this.system.mouse = { x: Math.round(nx), y: Math.round(ny) };
+   280→        this.pushEvent({ type: "move", x: this.system.mouse.x, y: this.system.mouse.y, t: rel });
+   281→      } else if (roll < 0.84) {
+   282→        const button: "left" | "right" = Math.random() < 0.85 ? "left" : "right";
+   283→        this.pushEvent({
+   284→          type: "click",
+   285→          x: this.system.mouse.x,
+   286→          y: this.system.mouse.y,
+   287→          button,
+   288→          t: rel,
+   289→        });
+   290→        this.log(
+   291→          "desktop",
+   292→          "info",
+   293→          `captured ${button === "left" ? "click" : "right-click"} → (${this.system.mouse.x}, ${this.system.mouse.y})`,
+   294→        );
+   295→      } else if (roll < 0.94) {
+   296→        const key = pick(["a", "s", "Enter", "Backspace", "Space", "t", "e"]);
+   297→        this.pushEvent({ type: "key", key, t: rel });
+   298→        this.log("desktop", "info", `captured key → ${key}`);
+   299→      } else if (roll < 0.98) {
+   300→        this.pushEvent({ type: "scroll", x: this.system.mouse.x, y: this.system.mouse.y, t: rel });
+   301→      } else {
+   302→        const keys = pick(HOTKEY_SAMPLES);
+   303→        this.pushEvent({ type: "hotkey", keys, t: rel });
+   304→        this.log("desktop", "info", `captured hotkey → ${keys.join("+")}`);
+   305→      }
+   306→    }
+   307→  }
+   308→
+   309→  private pushEvent(ev: MacroEvent): void {
+   310→    this.recorderEvents.push(ev);
+   311→    if (this.recorderEvents.length > MAX_EVENTS) this.recorderEvents.shift();
+   312→  }
+   313→
+   314→  // ---------------------------------------------------------------- tasks --
+   315→  private buildSteps(
+   316→    platformId: string,
+   317→    actionId: string,
+   318→    engine: EngineId,
+   319→    params: { text: string; target: string; image: string },
+   320→  ): { steps: TaskStepState[]; totalWeight: number } {
+   321→    const platform = getPlatform(platformId);
+   322→    const action = platform.actions.find((a) => a.id === actionId) ?? platform.actions[0];
+   323→    const script = buildScript(platform, action, params, {
+   324→      engine,
+   325→      networkIssue: false,
+   326→    });
+   327→    const totalWeight = script.reduce((acc, s) => acc + s.weight, 0);
+   328→    let acc = 0;
+   329→    const steps: TaskStepState[] = script.map((s) => {
+   330→      acc += s.weight;
+   331→      return {
+   332→        tag: s.tag,
+   333→        level: s.level,
+   334→        text: s.text,
+   335→        at: acc / totalWeight,
+   336→        emitted: false,
+   337→      };
+   338→    });
+   339→    // emit the very first step instantly
+   340→    if (steps.length > 0) steps[0].emitted = true;
+   341→    return { steps, totalWeight };
+   342→  }
+   343→
+   344→  private startTask(task: PanelTask, t: number): void {
+   345→    const built = this.buildSteps(task.platformId, task.actionId, task.engine, task.params);
+   346→    task.steps = built.steps;
+   347→    task.simDurationMs = built.totalWeight * 1350 * (SPEEDS[task.speed]?.mult ?? 1);
+   348→    task.status = "running";
+   349→    task.progress = 0;
+   350→    task.currentStep = 0;
+   351→    task.startedAt = t;
+   352→    task.runCount += 1;
+   353→    task.lastRunAt = t;
+   354→    const p = this.platforms.get(task.platformId);
+   355→    if (p) {
+   356→      p.lastAction = task.actionLabel;
+   357→      p.lastActiveAt = t;
+   358→      if (!p.running) {
+   359→        p.running = true;
+   360→        p.channel = p.channel ?? this.settings.channelFallbacks[0];
+   361→      }
+   362→    }
+   363→    this.log("gate", "info", `run → ${task.name} (engine=${task.engine}  speed=${SPEEDS[task.speed]?.label})`);
+   364→    // emit first log line
+   365→    const first = task.steps[0];
+   366→    if (first) this.log(first.tag, first.level, first.text);
+   367→  }
+   368→
+   369→  private advanceTask(task: PanelTask, dt: number, t: number): void {
+   370→    const prev = task.progress;
+   371→    task.progress = clamp(task.progress + dt / task.simDurationMs, 0, 1);
+   372→    // emit crossed steps
+   373→    for (let i = 0; i < task.steps.length; i++) {
+   374→      const s = task.steps[i];
+   375→      if (!s.emitted && task.progress >= s.at * 0.999) {
+   376→        s.emitted = true;
+   377→        task.currentStep = i + 1;
+   378→        this.log(s.tag, s.level, s.text);
+   379→      }
+   380→    }
+   381→    if (task.progress >= 1 && prev < 1) {
+   382→      task.status = "done";
+   383→      task.lastDurationS = (t - (task.startedAt ?? t)) / 1000;
+   384→      task.progress = 1;
+   385→      this.scheduleNext(task, t);
+   386→    }
+   387→  }
+   388→
+   389→  private scheduleNext(task: PanelTask, t: number): void {
+   390→    if (task.schedule.type === "every") {
+   391→      task.nextRunAt = t + task.schedule.seconds * 1000;
+   392→      this.log("scheduler", "info", `next run of ${task.name} in ${task.schedule.label}`);
+   393→    } else {
+   394→      task.nextRunAt = null;
+   395→    }
+   396→  }
+   397→
+   398→  // ---------------------------------------------------------------- names --
+   399→  private taskName(platformId: string, actionId: string): string {
+   400→    return `${platformId}_${actionId}`;
+   401→  }
+   402→
+   403→  private makeMacroName(): string {
+   404→    const existing = this.macros.length;
+   405→    return `macro_${String(existing + 1).padStart(2, "0")}`;
+   406→  }
+   407→
+   408→  // --------------------------------------------------------------- actions --
+   409→  dispatch(type: PanelActionType, payload: Record<string, unknown> = {}): {
+   410→    ok: boolean;
+   411→    message?: string;
+   412→    notify?: string;
+   413→    data?: unknown;
+   414→  } {
+   415→    const t = now();
+   416→    switch (type) {
+   417→      case "launch": {
+   418→        const id = String(payload.platformId ?? "");
+   419→        const p = this.platforms.get(id);
+   420→        if (!p) return { ok: false, message: "پلتفرم ناشناخته است" };
+   421→        if (p.running) return { ok: false, message: "مرورگر این پلتفرم از قبل باز است" };
+   422→        p.running = true;
+   423→        p.channel = p.channel ?? this.settings.channelFallbacks[0];
+   424→        p.lastActiveAt = t;
+   425→        this.log("playwright", "info", `resilient launch — trying: ${this.settings.channelFallbacks.join(" → ")}`);
+   426→        this.log("playwright", "ok", `channel=${p.channel} up (installed browser — no download needed)`);
+   427→        this.log("playwright", "info", `persistent context → ${p.profile} (headless=${this.settings.headless ? "on" : "off"})`);
+   428→        this.log(id, "ok", `browser opened — ${getPlatform(id).url}`);
+   429→        return { ok: true, message: `مرورگر ${getPlatform(id).name} باز شد` };
+   430→      }
+   431→
+   432→      case "closeBrowser": {
+   433→        const id = String(payload.platformId ?? "");
+   434→        const p = this.platforms.get(id);
+   435→        if (!p) return { ok: false, message: "پلتفرم ناشناخته است" };
+   436→        if (!p.running) return { ok: false, message: "مرورگر این پلتفرم باز نیست" };
+   437→        p.running = false;
+   438→        this.log("playwright", "info", `closing context → ${p.profile}`);
+   439→        this.log(id, "ok", "browser closed — profile state saved to disk");
+   440→        return { ok: true, message: `مرورگر ${getPlatform(id).name} بسته شد` };
+   441→      }
+   442→
+   443→      case "login": {
+   444→        const id = String(payload.platformId ?? "");
+   445→        const p = this.platforms.get(id);
+   446→        if (!p) return { ok: false, message: "پلتفرم ناشناخته است" };
+   447→        if (p.loggingIn) return { ok: false, message: "فرایند ورود از قبل در جریان است" };
+   448→        if (p.loggedIn) return { ok: false, message: "قبلاً وارد شده‌اید — ابتدا «خروج» بزنید" };
+   449→        p.loggingIn = true;
+   450→        p.loginStartedAt = t;
+   451→        p.loginDurationMs = randInt(8000, 11000);
+   452→        p.channel = this.settings.channelFallbacks[0];
+   453→        p.running = true;
+   454→        this.log("playwright", "info", `resilient launch — trying: ${this.settings.channelFallbacks.join(" → ")}`);
+   455→        this.log("playwright", "ok", `channel=${p.channel} up (installed browser — no download needed)`);
+   456→        this.log("stealth", "ok", "anti-detection script injected (webdriver, languages, plugins)");
+   457→        this.log(id, "info", "login page opened — لطفاً در پنجرهٔ بازشده وارد شوید");
+   458→        return { ok: true, message: `فرایند ورود ${getPlatform(id).name} شروع شد — در پنجرهٔ مرورگر وارد شوید` };
+   459→      }
+   460→
+   461→      case "logout": {
+   462→        const id = String(payload.platformId ?? "");
+   463→        const p = this.platforms.get(id);
+   464→        if (!p) return { ok: false, message: "پلتفرم ناشناخته است" };
+   465→        if (!p.loggedIn) return { ok: false, message: "از قبل خارج بوده‌اید" };
+   466→        p.loggedIn = false;
+   467→        p.sessionAgeMin = 0;
+   468→        this.log(id, "warn", "session cleared — login required for next action");
+   469→        return { ok: true, message: `سشن ${getPlatform(id).name} پاک شد` };
+   470→      }
+   471→
+   472→      case "createTask": {
+   473→        const platformId = String(payload.platformId ?? "instagram");
+   474→        const platform = CATALOG.find((p) => p.id === platformId);
+   475→        if (!platform) return { ok: false, message: "پلتفرم ناشناخته است" };
+   476→        const actionId = String(payload.actionId ?? platform.actions[0].id);
+   477→        const action = platform.actions.find((a) => a.id === actionId) ?? platform.actions[0];
+   478→        const engine = (payload.engine as EngineId) ?? "browser";
+   479→        const speed = (payload.speed as SpeedId) ?? "normal";
+   480→        const schedule = (payload.schedule as ScheduleSpec) ?? { type: "manual" };
+   481→        const runNow = payload.runNow !== false;
+   482→        const task: PanelTask = {
+   483→          id: ++this.taskSeq,
+   484→          name: this.taskName(platformId, actionId),
+   485→          platformId,
+   486→          actionId,
+   487→          actionLabel: action.label,
+   488→          engine,
+   489→          speed,
+   490→          params: {
+   491→            text: String(payload.text ?? ""),
+   492→            target: String(payload.target ?? ""),
+   493→            image: String(payload.image ?? ""),
+   494→          },
+   495→          status: "idle",
+   496→          progress: 0,
+   497→          steps: [],
+   498→          currentStep: 0,
+   499→          simDurationMs: 1,
+   500→          startedAt: null,
+   501→          runCount: 0,
+   502→          lastRunAt: null,
+   503→          lastDurationS: null,
+   504→          schedule,
+   505→          nextRunAt:
+   506→            schedule.type === "every" ? t + schedule.seconds * 1000 : null,
+   507→          createdAt: t,
+   508→        };
+   509→        this.tasks.unshift(task);
+   510→        this.log(
+   511→          "gate",
+   512→          "ok",
+   513→          `task created → ${task.name} (${platform.name} · ${action.label} · ${engine === "browser" ? "موتور مرورگر" : "موتور دسکتاپ"})`,
+   514→        );
+   515→        if (runNow) {
+   516→          this.startTask(task, t);
+   517→        } else if (schedule.type === "every") {
+   518→          this.log("scheduler", "info", `scheduled ${task.name} — every ${schedule.label}`);
+   519→        }
+   520→        return { ok: true, message: runNow ? `تسک «${task.name}» ساخته و اجرا شد` : `تسک «${task.name}» ساخته شد`, data: { taskId: task.id } };
+   521→      }
+   522→
+   523→      case "runTask": {
+   524→        const task = this.tasks.find((x) => x.id === Number(payload.taskId));
+   525→        if (!task) return { ok: false, message: "تسک یافت نشد" };
+   526→        if (task.status === "running") return { ok: false, message: "تسک در حال اجراست" };
+   527→        const p = this.platforms.get(task.platformId);
+   528→        if (p && !p.loggedIn) {
+   529→          return { ok: false, message: `ابتدا وارد ${getPlatform(task.platformId).name} شوید` };
+   530→        }
+   531→        this.startTask(task, t);
+   532→        return { ok: true, message: `اجرای «${task.name}» شروع شد` };
+   533→      }
+   534→
+   535→      case "stopTask": {
+   536→        const task = this.tasks.find((x) => x.id === Number(payload.taskId));
+   537→        if (!task) return { ok: false, message: "تسک یافت نشد" };
+   538→        if (task.status !== "running") return { ok: false, message: "تسک در حال اجرا نیست" };
+   539→        task.status = "idle";
+   540→        task.progress = 0;
+   541→        task.steps = [];
+   542→        task.nextRunAt = task.schedule.type === "every" ? t + task.schedule.seconds * 1000 : null;
+   543→        this.log("gate", "warn", `task aborted → ${task.name}`);
+   544→        return { ok: true, message: `«${task.name}» متوقف شد` };
+   545→      }
+   546→
+   547→      case "deleteTask": {
+   548→        const idx = this.tasks.findIndex((x) => x.id === Number(payload.taskId));
+   549→        if (idx === -1) return { ok: false, message: "تسک یافت نشد" };
+   550→        const [removed] = this.tasks.splice(idx, 1);
+   551→        this.log("gate", "info", `task deleted → ${removed.name}`);
+   552→        return { ok: true, message: `تسک «${removed.name}» حذف شد` };
+   553→      }
+   554→
+   555→      case "loadSampleTasks": {
+   556→        const samples: Array<{
+   557→          platformId: string;
+   558→          actionId: string;
+   559→          text: string;
+   560→          target: string;
+   561→          engine: EngineId;
+   562→          schedule: ScheduleSpec;
+   563→        }> = [
+   564→          {
+   565→            platformId: "instagram",
+   566→            actionId: "post_photo",
+   567→            text: "Hello World از پارس‌ایجنت 🤖 #automation",
+   568→            target: "",
+   569→            engine: "browser",
+   570→            schedule: { type: "manual" },
+   571→          },
+   572→          {
+   573→            platformId: "telegram",
+   574→            actionId: "send_message",
+   575→            text: "گزارش روزانه ثبت شد ✅",
+   576→            target: "ParsAgent Devs",
+   577→            engine: "browser",
+   578→            schedule: { type: "every", seconds: 300, label: "۵ دقیقه" },
+   579→          },
+   580→          {
+   581→            platformId: "bale",
+   582→            actionId: "send_message",
+   583→            text: "یادآوری جلسه ساعت ۱۴ ⏰",
+   584→            target: "تیم محصول",
+   585→            engine: "browser",
+   586→            schedule: { type: "daily", at: "09:30", label: "هر روز ۰۹:۳۰" },
+   587→          },
+   588→        ];
+   589→        for (const s of samples) {
+   590→          const platform = getPlatform(s.platformId);
+   591→          const action = platform.actions.find((a) => a.id === s.actionId) ?? platform.actions[0];
+   592→          this.tasks.unshift({
+   593→            id: ++this.taskSeq,
+   594→            name: this.taskName(s.platformId, s.actionId),
+   595→            platformId: s.platformId,
+   596→            actionId: s.actionId,
+   597→            actionLabel: action.label,
+   598→            engine: s.engine,
+   599→            speed: "normal",
+   600→            params: { text: s.text, target: s.target, image: "assets/photo.jpg" },
+   601→            status: "idle",
+   602→            progress: 0,
+   603→            steps: [],
+   604→            currentStep: 0,
+   605→            simDurationMs: 1,
+   606→            startedAt: null,
+   607→            runCount: 0,
+   608→            lastRunAt: null,
+   609→            lastDurationS: null,
+   610→            schedule: s.schedule,
+   611→            nextRunAt: s.schedule.type === "every" ? t + s.schedule.seconds * 1000 : null,
+   612→            createdAt: t,
+   613→          });
+   614→        }
+   615→        this.log("gate", "ok", "loaded sample tasks → tasks/examples.json (۳ تسک)");
+   616→        return { ok: true, message: "۳ تسک نمونه بارگذاری شد" };
+   617→      }
+   618→
+   619→      case "recordStart": {
+   620→        if (this.recorderActive) return { ok: false, message: "ضبط از قبل فعال است" };
+   621→        this.recorderActive = true;
+   622→        this.recorderStartedAt = t;
+   623→        this.recorderEvents = [];
+   624→        this.log("desktop", "info", "recorder armed — pynput listeners attached");
+   625→        this.log("desktop", "ok", "recording… (F9 ذخیره، F10 لغو)");
+   626→        return { ok: true, message: "ضبط ماکرو شروع شد — در ویندوز واقعی با F9 تمام می‌شود" };
+   627→      }
+   628→
+   629→      case "recordStop": {
+   630→        if (!this.recorderActive) return { ok: false, message: "ضبط فعال نیست" };
+   631→        this.recorderActive = false;
+   632→        this.log("desktop", "info", "listeners detached — flushing buffer");
+   633→        return { ok: true, message: `ضبط پایان یافت (${this.recorderEvents.length} رخداد)` };
+   634→      }
+   635→
+   636→      case "recordClear": {
+   637→        this.recorderActive = false;
+   638→        this.recorderEvents = [];
+   639→        this.recorderStartedAt = null;
+   640→        this.log("desktop", "warn", "recording discarded (F10)");
+   641→        return { ok: true, message: "رخدادهای ضبط‌شده پاک شدند" };
+   642→      }
+   643→
+   644→      case "saveMacro": {
+   645→        if (this.recorderEvents.length === 0) return { ok: false, message: "رخدادی برای ذخیره نیست" };
+   646→        this.recorderActive = false;
+   647→        const macro: Macro = {
+   648→          id: ++this.macroSeq,
+   649→          name: String(payload.name ?? "").trim() || this.makeMacroName(),
+   650→          events: [...this.recorderEvents],
+   651→          durationMs: Math.max(
+   652→            500,
+   653→            this.recorderEvents[this.recorderEvents.length - 1]?.t ?? 1000,
+   654→          ),
+   655→          createdAt: t,
+   656→        };
+   657→        this.macros.unshift(macro);
+   658→        this.recorderEvents = [];
+   659→        this.recorderStartedAt = null;
+   660→        this.log("desktop", "ok", `macro saved → macros/${macro.name}.json (${macro.events.length} events, ${(macro.durationMs / 1000).toFixed(1)}s)`);
+   661→        return { ok: true, message: `ماکرو «${macro.name}» ذخیره شد` };
+   662→      }
+   663→
+   664→      case "deleteMacro": {
+   665→        const idx = this.macros.findIndex((m) => m.id === Number(payload.macroId));
+   666→        if (idx === -1) return { ok: false, message: "ماکرو یافت نشد" };
+   667→        const [removed] = this.macros.splice(idx, 1);
+   668→        if (this.playback?.macroId === removed.id) this.playback = null;
+   669→        this.log("desktop", "info", `macro deleted → macros/${removed.name}.json`);
+   670→        return { ok: true, message: `ماکرو «${removed.name}» حذف شد` };
+   671→      }
+   672→
+   673→      case "playMacro": {
+   674→        const macro = this.macros.find((m) => m.id === Number(payload.macroId));
+   675→        if (!macro) return { ok: false, message: "ماکرو یافت نشد" };
+   676→        if (this.playback) return { ok: false, message: "یک بازپخش در جریان است" };
+   677→        const speed = Number(payload.speed ?? 1) || 1;
+   678→        this.playback = {
+   679→          macroId: macro.id,
+   680→          macroName: macro.name,
+   681→          speed,
+   682→          startedAt: t,
+   683→          durationMs: Math.max(600, macro.durationMs / speed),
+   684→          totalEvents: macro.events.length,
+   685→        };
+   686→        this.playbackLogged = 0;
+   687→        this.log("desktop", "info", `playing macros/${macro.name}.json (speed ×${speed})`);
+   688→        return { ok: true, message: `بازپخش «${macro.name}» با سرعت ×${speed} شروع شد` };
+   689→      }
+   690→
+   691→      case "stopPlayback": {
+   692→        if (!this.playback) return { ok: false, message: "بازپخشی در جریان نیست" };
+   693→        this.log("desktop", "warn", `playback aborted → ${this.playback.macroName}`);
+   694→        this.playback = null;
+   695→        this.playbackLogged = 0;
+   696→        return { ok: true, message: "بازپخش متوقف شد" };
+   697→      }
+   698→
+   699→      case "loadSampleMacro": {
+   700→        if (this.macros.some((m) => m.name === "نمونه-فرم-پر کردن")) {
+   701→          return { ok: false, message: "ماکروی نمونه قبلاً بارگذاری شده است" };
+   702→        }
+   703→        const events: MacroEvent[] = [];
+   704→        let time = 0;
+   705→        const pts: Array<[number, number]> = [
+   706→          [240, 220], [520, 190], [760, 260], [980, 420], [1180, 380],
+   707→          [1420, 300], [1520, 520], [1240, 640], [940, 720], [640, 660],
+   708→          [420, 760], [300, 560],
+   709→        ];
+   710→        pts.forEach(([x, y], i) => {
+   711→          events.push({ type: "move", x, y, t: Math.round(time) });
+   712→          time += rand(220, 420);
+   713→          if (i === 2 || i === 6 || i === 9) {
+   714→            events.push({ type: "click", x, y, button: "left", t: Math.round(time) });
+   715→            time += rand(260, 380);
+   716→          }
+   717→          if (i === 4) {
+   718→            events.push({ type: "hotkey", keys: ["ctrl", "a"], t: Math.round(time) });
+   719→            time += 240;
+   720→          }
+   721→        });
+   722→        SAMPLE_TEXTS[0]
+   723→          .slice(0, 12)
+   724→          .split("")
+   725→          .forEach((ch) => {
+   726→            events.push({ type: "key", key: ch === " " ? "Space" : ch, t: Math.round(time) });
+   727→            time += rand(90, 190);
+   728→          });
+   729→        events.push({ type: "hotkey", keys: ["ctrl", "s"], t: Math.round(time) });
+   730→        const macro: Macro = {
+   731→          id: ++this.macroSeq,
+   732→          name: "نمونه-فرم-پر-کردن",
+   733→          events,
+   734→          durationMs: time,
+   735→          createdAt: t,
+   736→        };
+   737→        this.macros.unshift(macro);
+   738→        this.log("desktop", "ok", `sample macro loaded → macros/${macro.name}.json (${events.length} events)`);
+   739→        return { ok: true, message: "ماکروی نمونه بارگذاری شد" };
+   740→      }
+   741→
+   742→      case "systemAction": {
+   743→        return this.systemAction(String(payload.kind ?? ""), payload);
+   744→      }
+   745→
+   746→      case "saveSettings": {
+   747→        const incoming = payload.settings as Partial<PanelSettings> | undefined;
+   748→        if (!incoming) return { ok: false, message: "تنظیماتی ارسال نشد" };
+   749→        const fb = Array.isArray(incoming.channelFallbacks)
+   750→          ? incoming.channelFallbacks.filter((c) => typeof c === "string" && c.trim())
+   751→          : this.settings.channelFallbacks;
+   752→        if (fb.length === 0) fb.push("msedge");
+   753→        this.settings = {
+   754→          channelFallbacks: fb.slice(0, 4),
+   755→          headless: Boolean(incoming.headless),
+   756→          proxy: String(incoming.proxy ?? ""),
+   757→          human: {
+   758→            enabled: incoming.human?.enabled ?? this.settings.human.enabled,
+   759→            minDelayS: Number(incoming.human?.minDelayS ?? this.settings.human.minDelayS),
+   760→            maxDelayS: Number(incoming.human?.maxDelayS ?? this.settings.human.maxDelayS),
+   761→            typingMinMs: Number(incoming.human?.typingMinMs ?? this.settings.human.typingMinMs),
+   762→            typingMaxMs: Number(incoming.human?.typingMaxMs ?? this.settings.human.typingMaxMs),
+   763→          },
+   764→          gateway: {
+   765→            url: String(incoming.gateway?.url ?? this.settings.gateway.url),
+   766→            token: String(incoming.gateway?.token ?? this.settings.gateway.token),
+   767→          },
+   768→        };
+   769→        this.log("gate", "ok", `config.json saved — fallbacks: ${this.settings.channelFallbacks.join(" → ")}`);
+   770→        return { ok: true, message: "تنظیمات ذخیره شد (config.json)" };
+   771→      }
+   772→
+   773→      case "resetSettings": {
+   774→        this.settings = structuredClone(DEFAULT_SETTINGS);
+   775→        this.log("gate", "info", "settings restored to defaults");
+   776→        return { ok: true, message: "تنظیمات به حالت پیش‌فرض بازگشت" };
+   777→      }
+   778→
+   779→      case "clearLogs": {
+   780→        this.logs = [];
+   781→        this.log("gate", "ok", "log buffer cleared");
+   782→        return { ok: true, message: "لاگ‌ها پاک شدند" };
+   783→      }
+   784→
+   785→      default:
+   786→        return { ok: false, message: "دستور ناشناخته" };
+   787→    }
+   788→  }
+   789→
+   790→  // -------------------------------------------------------- system actions --
+   791→  private systemAction(kind: string, payload: Record<string, unknown>): {
+   792→    ok: boolean;
+   793→    message?: string;
+   794→    notify?: string;
+   795→    data?: unknown;
+   796→  } {
+   797→    const t = now();
+   798→    switch (kind) {
+   799→      case "screenshot": {
+   800→        const stamp = `${new Date(t).getFullYear()}${pad(new Date(t).getMonth() + 1)}${pad(new Date(t).getDate())}_${pad(new Date(t).getHours())}${pad(new Date(t).getMinutes())}${pad(new Date(t).getSeconds())}`;
+   801→        const path = `data/screenshots/panel_${stamp}.png`;
+   802→        this.screenshotSeq += 1;
+   803→        this.log("desktop", "info", "capturing screen → mss.grab() (1920×1080)");
+   804→        this.log("desktop", "ok", `screenshot saved → ${path}`);
+   805→        return { ok: true, message: "اسکرین‌شات گرفته شد", data: { path } };
+   806→      }
+   807→      case "clipboardWrite": {
+   808→        const text = String(payload.text ?? "");
+   809→        this.system.clipboard = text;
+   810→        this.log("desktop", "ok", `clipboard set → ${text.length} chars`);
+   811→        return { ok: true, message: "متن در کلیپ‌بورد کپی شد", data: { text } };
+   812→      }
+   813→      case "clipboardRead": {
+   814→        this.log("desktop", "info", "clipboard read (pyperclip)");
+   815→        return { ok: true, message: "کلیپ‌بورد خوانده شد", data: { text: this.system.clipboard } };
+   816→      }
+   817→      case "openApp": {
+   818→        const app = String(payload.app ?? "notepad").trim() || "notepad";
+   819→        this.log("desktop", "info", `launching → ${app}.exe`);
+   820→        this.log("desktop", "ok", `window activated (pid ${randInt(1000, 9999)}, focus=true)`);
+   821→        return { ok: true, message: `برنامه «${app}» باز شد`, data: { app } };
+   822→      }
+   823→      case "hotkey": {
+   824→        const keys = Array.isArray(payload.keys) ? (payload.keys as string[]) : ["win", "r"];
+   825→        this.log("desktop", "info", `hotkey → ${keys.join("+")} (human delay ${Math.round(rand(this.settings.human.typingMinMs, this.settings.human.typingMaxMs))}ms)`);
+   826→        this.log("desktop", "ok", "hotkey delivered");
+   827→        return { ok: true, message: `هاتکی ${keys.join("+")} اجرا شد`, data: { keys } };
+   828→      }
+   829→      case "typeText": {
+   830→        const text = String(payload.text ?? "");
+   831→        if (!text.trim()) return { ok: false, message: "متنی برای تایپ وارد کنید" };
+   832→        const total = text.length * this.settings.human.typingMinMs;
+   833→        this.log("desktop", "info", `typing ${text.length} chars (${(total / 1000).toFixed(1)}s at ${this.settings.human.typingMinMs}–${this.settings.human.typingMaxMs}ms/char)`);
+   834→        this.log("desktop", "ok", "text delivered");
+   835→        return { ok: true, message: "متن تایپ شد", data: { length: text.length } };
+   836→      }
+   837→      case "clickAt": {
+   838→        const x = Math.round(Number(payload.x ?? 960));
+   839→        const y = Math.round(Number(payload.y ?? 540));
+   840→        if (Number.isNaN(x) || Number.isNaN(y)) return { ok: false, message: "مختصات نامعتبر است" };
+   841→        this.system.mouse = { x: clamp(x, 0, 1920), y: clamp(y, 0, 1080) };
+   842→        this.log("desktop", "info", `moving mouse → (${x}, ${y}) with jitter`);
+   843→        this.log("desktop", "ok", `click delivered (${x}, ${y})`);
+   844→        return { ok: true, message: `کلیک در (${x}، ${y}) انجام شد` };
+   845→      }
+   846→      case "wait": {
+   847→        const seconds = Math.min(60, Math.max(1, Math.round(Number(payload.seconds ?? 3))));
+   848→        this.log("scheduler", "info", `sleep(${seconds}s)`);
+   849→        this.log("scheduler", "ok", "wait completed");
+   850→        return { ok: true, message: `${seconds} ثانیه صبر شد`, data: { seconds } };
+   851→      }
+   852→      case "notify": {
+   853→        const message = String(payload.message ?? "").trim();
+   854→        if (!message) return { ok: false, message: "پیام اعلان را وارد کنید" };
+   855→        this.log("notify", "info", `windows toast → ${message}`);
+   856→        return { ok: true, message: "اعلان ویندوز ارسال شد", notify: message };
+   857→      }
+   858→      case "lock": {
+   859→        this.log("desktop", "warn", "hotkey win+l — workstation locked");
+   860→        return { ok: true, message: "دستور قفل صفحه ارسال شد (win+l)" };
+   861→      }
+   862→      default:
+   863→        return { ok: false, message: "اکشن سیستمی ناشناخته" };
+   864→    }
+   865→  }
+   866→
+   867→  // ---------------------------------------------------------------- export --
+   868→  exportState(): PanelState {
+   869→    const activeTasks = this.tasks.filter((task) => task.status === "running").length;
+   870→    return {
+   871→      version: VERSION,
+   872→      mode: "simulator",
+   873→      startedAt: this.startedAt,
+   874→      system: { ...this.system, mouse: { ...this.system.mouse } },
+   875→      settings: structuredClone(this.settings),
+   876→      platforms: [...this.platforms.values()].map((p) => ({ ...p })),
+   877→      tasks: this.tasks.map((task) => ({ ...task, steps: task.steps.map((s) => ({ ...s })) })),
+   878→      macros: this.macros.map((m) => ({ ...m, events: m.events })),
+   879→      recorder: {
+   880→        active: this.recorderActive,
+   881→        startedAt: this.recorderStartedAt,
+   882→        events: this.recorderEvents,
+   883→      },
+   884→      playback: this.playback ? { ...this.playback } : null,
+   885→      logs: this.logs.slice(-220),
+   886→      stats: {
+   887→        activeTasks,
+   888→        doneTasks: this.tasks.filter((task) => task.status === "done").length,
+   889→        totalRuns: this.tasks.reduce((acc, task) => acc + task.runCount, 0),
+   890→        macroCount: this.macros.length,
+   891→        logCount: this.logs.length,
+   892→        openBrowsers: [...this.platforms.values()].filter((p) => p.running).length,
+   893→        loggedIn: [...this.platforms.values()].filter((p) => p.loggedIn).length,
+   894→      },
+   895→    };
+   896→  }
+   897→}
+   898→
+   899→// ------------------------------------------------------------------ global --
+   900→// Survives dev-server HMR reloads like a proper singleton.
+   901→const g = globalThis as unknown as { __parsPanelStore?: PanelStore };
+   902→
+   903→export function getPanelStore(): PanelStore {
+   904→  if (!g.__parsPanelStore) {
+   905→    g.__parsPanelStore = new PanelStore();
+   906→  }
+   907→  return g.__parsPanelStore;
+   908→}
+   909→
+   910→export type { PanelLog };
+   911→export { logTimestamp };
+   912→

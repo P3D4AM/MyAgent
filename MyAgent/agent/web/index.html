@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>پارس‌ایجنت — پنل کنترل</title>
+<style>
+:root{
+  --bg:#0b1220; --bg2:#080e1a; --panel:#111a2c; --card:#16213a; --card2:#1c2a4a;
+  --line:#243356; --fg:#dbe4f0; --muted:#8fa3c0; --dim:#5d7099;
+  --acc:#10b981; --acc2:#34d399; --accbg:#123528;
+  --warn:#f59e0b; --warnbg:#33270e; --err:#f43f5e; --errbg:#381825;
+  --sky:#38bdf8; --skybg:#0e2a3d; --violet:#a78bfa;
+  --mono:Consolas,"JetBrains Mono",Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"Vazirmatn","Segoe UI",Tahoma,sans-serif;
+  background:var(--bg); color:var(--fg); font-size:14px;
+  display:flex; flex-direction:column; min-height:100vh;
+}
+::selection{background:#14532d}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:#223052;border-radius:8px}
+::-webkit-scrollbar-thumb:hover{background:#2d3f6e}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:12px;
+  padding:10px 18px;background:rgba(8,14,26,.92);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);flex-wrap:wrap;
+}
+.brand{display:flex;align-items:baseline;gap:10px}
+.brand b{font-size:19px;color:var(--acc)}
+.brand span{font-size:11px;color:var(--dim)}
+.hspace{flex:1}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:99px;
+  font-size:12px;border:1px solid var(--line);background:var(--panel);color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+.dot.ok{background:var(--acc);box-shadow:0 0 8px var(--acc)}
+.dot.err{background:var(--err)}
+.dot.rec{background:var(--err);animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.35}}
+
+/* ---------- layout ---------- */
+.wrap{display:flex;flex:1}
+nav{
+  width:190px;flex-shrink:0;padding:14px 10px;display:flex;flex-direction:column;
+  gap:4px;border-left:1px solid var(--line);background:var(--bg2);
+  position:sticky;top:53px;height:calc(100vh - 53px);overflow-y:auto;
+}
+nav button{
+  display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;
+  background:transparent;border:none;border-radius:10px;color:var(--muted);
+  font-family:inherit;font-size:13.5px;cursor:pointer;text-align:right;transition:.15s;
+}
+nav button:hover{background:var(--panel);color:var(--fg)}
+nav button.active{background:var(--accbg);color:var(--acc2);font-weight:700}
+nav .nsep{font-size:10px;color:var(--dim);padding:12px 12px 4px}
+main{flex:1;padding:18px;min-width:0}
+.view{display:none;animation:fadein .25s}
+.view.active{display:block}
+@keyframes fadein{from{opacity:0;transform:translateY(4px)}to{opacity:1}}
+
+footer{
+  margin-top:auto;display:flex;align-items:center;gap:14px;
+  padding:9px 18px;border-top:1px solid var(--line);background:var(--bg2);
+  font-size:12px;color:var(--dim);flex-wrap:wrap;
+}
+
+/* ---------- switch ---------- */
+.sw{position:relative;display:inline-block;width:34px;height:20px;flex-shrink:0;cursor:pointer}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw i{position:absolute;inset:0;background:#223052;border-radius:99px;transition:.2s}
+.sw i:before{content:'';position:absolute;width:14px;height:14px;border-radius:50%;
+  background:#8fa3c0;top:3px;right:3px;transition:.2s}
+.sw input:checked+i{background:var(--acc)}
+.sw input:checked+i:before{transform:translateX(-14px);background:#04120c}
+.modrow{display:flex;gap:10px;align-items:flex-start;background:var(--card);
+  border:1px solid var(--line);border-radius:11px;padding:10px 12px}
+.modrow .mtxt{flex:1;min-width:0}
+.modrow .mtxt b{font-size:13px;display:block}
+.modrow .mtxt span{font-size:11px;color:var(--dim);line-height:1.8;display:block}
+.checkrow{display:flex;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;padding:9px 12px;font-size:12.5px}
+.checkrow .ok{color:var(--acc2)} .checkrow .bad{color:var(--err)}
+.chipcred{display:inline-flex;align-items:center;gap:6px;padding:7px 13px;background:var(--card);
+  border:1px solid var(--line);border-radius:99px;cursor:pointer;font-size:12.5px;transition:.15s}
+.chipcred:hover{border-color:#3b4f7e}
+.chipcred.on{background:var(--accbg);color:var(--acc2);border-color:var(--acc)}
+
+/* ---------- generic ---------- */
+h2{font-size:17px;margin-bottom:4px}
+h2 .sub{font-size:12px;font-weight:400;color:var(--muted);margin-inline-start:8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.muted{color:var(--muted)} .dim{color:var(--dim)} .small{font-size:12px}
+.mono{font-family:var(--mono);direction:ltr;text-align:left}
+label.f{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px}
+input[type=text],input[type=number],input[type=password],select,textarea{
+  width:100%;padding:9px 11px;background:#0a1322;color:var(--fg);
+  border:1px solid var(--line);border-radius:10px;font-family:inherit;font-size:13.5px;
+  outline:none;transition:.15s;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(16,185,129,.12)}
+textarea{resize:vertical;min-height:74px}
+textarea.code{font-family:var(--mono);direction:ltr;text-align:left;min-height:340px;font-size:12.5px;line-height:1.65;tab-size:2}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  padding:9px 15px;background:var(--card2);color:var(--fg);border:1px solid var(--line);
+  border-radius:10px;font-family:inherit;font-size:13px;cursor:pointer;transition:.15s;
+  user-select:none;
+}
+.btn:hover{border-color:#3b4f7e;transform:translateY(-1px)}
+.btn:active{transform:translateY(0)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.btn.pri{background:var(--acc);border-color:var(--acc);color:#04120c;font-weight:700}
+.btn.pri:hover{background:var(--acc2)}
+.btn.danger{color:var(--err);border-color:#4d2233}
+.btn.danger:hover{background:var(--errbg)}
+.btn.warn{color:var(--warn);border-color:#4d3a12}
+.btn.ghost{background:transparent}
+.btn.sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn.lg{padding:13px 22px;font-size:15px}
+.tag{display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:99px;font-size:11px}
+.tag.ok{background:var(--accbg);color:var(--acc2)}
+.tag.warn{background:var(--warnbg);color:var(--warn)}
+.tag.err{background:var(--errbg);color:var(--err)}
+.tag.info{background:var(--skybg);color:var(--sky)}
+.tag.dim{background:#182238;color:var(--muted)}
+pre.out{
+  background:#060b16;border:1px solid var(--line);border-radius:10px;padding:12px;
+  font-family:var(--mono);direction:ltr;text-align:left;font-size:12px;line-height:1.7;
+  white-space:pre-wrap;word-break:break-word;max-height:300px;overflow:auto;
+}
+hr.sep{border:none;border-top:1px solid var(--line);margin:14px 0}
+
+/* ---------- toasts ---------- */
+#toasts{position:fixed;bottom:18px;left:18px;z-index:200;display:flex;flex-direction:column;gap:8px}
+.toast{
+  min-width:240px;max-width:380px;padding:11px 15px;border-radius:12px;font-size:13px;
+  background:var(--card);border:1px solid var(--line);box-shadow:0 8px 30px rgba(0,0,0,.5);
+  animation:slidein .25s;display:flex;gap:9px;align-items:flex-start;
+}
+.toast.ok{border-color:#1d5c44}.toast.err{border-color:#5c2436}
+.toast.warn{border-color:#5c4a1d}.toast.info{border-color:#1d4a5c}
+@keyframes slidein{from{opacity:0;transform:translateY(12px)}to{opacity:1}}
+
+/* ---------- modal ---------- */
+#modal{position:fixed;inset:0;z-index:300;background:rgba(4,8,16,.75);display:none;
+  align-items:center;justify-content:center;padding:20px}
+#modal.show{display:flex}
+#modal .box{background:var(--panel);border:1px solid var(--line);border-radius:16px;
+  max-width:min(900px,94vw);max-height:88vh;overflow:auto;padding:18px;width:100%}
+#modal img{max-width:100%;border-radius:10px;border:1px solid var(--line)}
+
+/* ---------- dashboard ---------- */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px}
+.stat .v{font-size:23px;font-weight:800;margin-top:4px}
+.stat .k{font-size:12px;color:var(--muted);display:flex;gap:7px;align-items:center}
+.minilog{max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:5px}
+.platchips{display:flex;flex-wrap:wrap;gap:8px}
+.pchip{display:inline-flex;align-items:center;gap:7px;padding:7px 13px;background:var(--card);
+  border:1px solid var(--line);border-radius:99px;cursor:pointer;font-size:12.5px;transition:.15s}
+.pchip:hover{border-color:#3b4f7e}
+.pchip .pd{width:9px;height:9px;border-radius:50%}
+.steps{display:flex;gap:10px;flex-wrap:wrap;font-size:12.5px}
+.step{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);
+  border-radius:10px;padding:8px 12px}
+.step b{color:var(--acc2)}
+
+/* ---------- platforms ---------- */
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px}
+.pcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:15px}
+.pcard .head{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.pcard .pd{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+.pcard .head b{font-size:15px}
+.pcard .url{font-size:11px;color:var(--dim);direction:ltr;text-align:right;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.pcard .btns{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+.actionbox{margin-top:11px;border-top:1px dashed var(--line);padding-top:11px}
+.actionbox select{margin-bottom:6px}
+.afields{display:grid;gap:7px;margin:8px 0}
+.afields input,.afields textarea{padding:7px 10px;font-size:12.5px}
+.afields textarea{min-height:52px}
+
+/* ---------- jobs ---------- */
+.jobs{display:flex;flex-direction:column;gap:7px}
+.job{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);
+  border-radius:11px;padding:9px 13px;font-size:12.5px}
+.job .jl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job .jt{color:var(--dim);font-size:11px;flex-shrink:0}
+.spin{width:13px;height:13px;border:2px solid #2d3f6e;border-top-color:var(--sky);border-radius:50%;
+  animation:rot .8s linear infinite;flex-shrink:0}
+@keyframes rot{to{transform:rotate(360deg)}}
+.jstat{font-size:13px;flex-shrink:0}
+.jstat.done{color:var(--acc2)} .jstat.failed{color:var(--err)}
+.jstat.running{color:var(--sky)} .jstat.cancelled{color:var(--warn)}
+
+/* ---------- record ---------- */
+.rechero{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.recdot{width:52px;height:52px;border-radius:50%;background:#182238;display:flex;
+  align-items:center;justify-content:center;font-size:24px;flex-shrink:0}
+.recdot.on{background:var(--errbg);border:2px solid var(--err);animation:pulse 1.2s infinite}
+.recnums{display:flex;gap:20px}
+.recnums .v{font-size:22px;font-weight:800}
+.mtable{width:100%;border-collapse:collapse;font-size:12.5px}
+.mtable th{color:var(--dim);font-weight:400;text-align:right;padding:7px 9px;border-bottom:1px solid var(--line);font-size:11px}
+.mtable td{padding:8px 9px;border-bottom:1px solid #1a2742;vertical-align:middle}
+.mtable tr:hover td{background:#131f38}
+
+/* ---------- logs ---------- */
+.logtoolbar{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;align-items:center}
+.logtoolbar select,.logtoolbar input{width:auto;min-width:110px;padding:6px 10px;font-size:12px}
+#logbox{
+  background:#060b16;border:1px solid var(--line);border-radius:12px;padding:12px 14px;
+  font-family:var(--mono);font-size:12px;line-height:1.85;direction:ltr;text-align:left;
+  height:calc(100vh - 320px);min-height:280px;overflow-y:auto;
+}
+.lg{display:flex;gap:10px}
+.lg .t{color:#3f517a;flex-shrink:0}
+.lg .s{color:#5d8fc9;flex-shrink:0;min-width:74px}
+.lg .m{white-space:pre-wrap;word-break:break-word;color:#c3d0e8}
+.lg.warn .m{color:var(--warn)} .lg.error .m{color:var(--err)}
+.lg.info .m{color:#c3d0e8} .lg.debug .m{color:var(--dim)} .lg.critical .m{color:var(--err);font-weight:700}
+
+/* ---------- system ---------- */
+.shotwrap{position:relative;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#060b16}
+#shot{display:block;width:100%;cursor:crosshair;user-select:none;min-height:60px}
+.shotbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px;font-size:12px}
+.modes{display:flex;gap:5px;flex-wrap:wrap}
+.mode{padding:5px 12px;border-radius:99px;border:1px solid var(--line);cursor:pointer;
+  font-size:11.5px;color:var(--muted);background:var(--card)}
+.mode.on{background:var(--accbg);color:var(--acc2);border-color:var(--acc)}
+.keygrid{display:flex;flex-wrap:wrap;gap:6px}
+.key{padding:7px 11px;background:var(--card2);border:1px solid var(--line);border-radius:9px;
+  cursor:pointer;font-size:12px;direction:ltr;font-family:var(--mono)}
+.key:hover{border-color:#3b4f7e;color:var(--acc2)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:12.5px}
+.kv .k{color:var(--muted)}
+
+/* ---------- demo banner ---------- */
+#demobanner{display:none;background:var(--warnbg);border-bottom:1px solid #5c4a1d;color:var(--warn);
+  padding:10px 16px;font-size:13px;text-align:center}
+#demobanner.show{display:block}
+
+@media(max-width:860px){
+  nav{position:static;width:100%;height:auto;flex-direction:row;overflow-x:auto;
+    border-left:none;border-bottom:1px solid var(--line);padding:8px}
+  nav button{white-space:nowrap;width:auto}
+  nav .nsep,nav .small{display:none}
+  .wrap{flex-direction:column}
+  #logbox{height:60vh}
+  #tasksGrid{grid-template-columns:1fr !important}
+}
+</style>
+</head>
+<body>
+
+<div id="demobanner">⚠️ حالت پیش‌نمایش — سرور محلی پارس‌ایجنت در دسترس نیست.
+روی سیستم خودت با <b>launcher.py</b> سرور را اجرا کن تا همهٔ امکانات فعال شود.</div>
+
+<header>
+  <div class="brand"><b>🤖 پارس‌ایجنت</b><span>پنل کنترل v1.2</span></div>
+  <div class="hspace"></div>
+  <span class="chip" id="recChip" style="display:none"><span class="dot rec"></span>در حال ضبط</span>
+  <span class="chip"><span class="dot" id="wsDot"></span><span id="wsTxt">اتصال…</span></span>
+</header>
+
+<div class="wrap">
+<nav id="nav">
+  <button data-v="dash" class="active">📊 داشبورد</button>
+  <button data-v="platforms">🌐 پلتفرم‌ها</button>
+  <button data-v="tasks">⚙️ وظایف</button>
+  <button data-v="record">⏺️ ضبط ماکرو</button>
+  <button data-v="system">🖥️ سیستم</button>
+  <button data-v="logs">📜 لاگ‌ها</button>
+  <button data-v="settings">🔧 تنظیمات</button>
+  <div class="nsep">راهنمای سریع</div>
+  <div class="small dim" style="padding:0 12px 8px;line-height:2">
+    F9 = پایان ضبط<br>F10 = لغو ضبط<br>گوشهٔ بالا-چپِ موس = توقف اضطراری
+  </div>
+</nav>
+
+<main>
+<!-- ================= داشبورد ================= -->
+<section class="view active" id="v-dash">
+  <div class="stats">
+    <div class="stat"><div class="k"><span class="dot" id="srvDot"></span>سرور</div><div class="v" id="stSrv">—</div></div>
+    <div class="stat"><div class="k">🌐 مرورگر پروفایل‌ها</div><div class="v" id="stProf">—</div></div>
+    <div class="stat"><div class="k">⏺️ ضبط</div><div class="v" id="stRec">—</div></div>
+    <div class="stat"><div class="k">⚙️ کارهای فعال</div><div class="v" id="stJobs">—</div></div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <h2>⚡ اجرای سریع</h2>
+      <p class="muted small" style="margin:4px 0 12px">با یک کلیک، مرورگر پلتفرم با پروفایل ماندگارش باز می‌شود.</p>
+      <div class="platchips" id="quickPlats"></div>
+      <hr class="sep">
+      <div class="row">
+        <button class="btn sm" onclick="shotNow()">📸 اسکرین‌شات صفحه</button>
+        <button class="btn sm" onclick="runSampleTask()">⚙️ اجرای تسک نمونه</button>
+        <button class="btn sm" onclick="go('record')">⏺️ ضبط ماکرو</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>🧩 ماژول‌ها</h2>
+      <p class="muted small" style="margin:4px 0 12px">وضعیت اجزای نصب‌شدهٔ ایجنت روی این سیستم.</p>
+      <div class="row" id="modChips" style="gap:6px"></div>
+      <hr class="sep">
+      <div class="small dim" id="sysMini"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🚀 شروع سریع <span class="sub">سه قدم</span></h2>
+    <div class="steps" style="margin-top:10px">
+      <div class="step"><b>۱</b> از تب «پلتفرم‌ها» مرورگر هر پلتفرم را باز کن و داخل همان پنجره لاگین کن (پروفایل ماندگار است).</div>
+      <div class="step"><b>۲</b> از «اجرای سریع» هر کار روزانه‌ات را اجرا کن — یا در «وظایف» فلو چندمرحله‌ای بساز.</div>
+      <div class="step"><b>۳</b> کارهای تکراری را ضبط کن و بعد هر بار با یک کلیک بازپخش کن.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>📜 آخرین رویدادها <span class="sub"><a href="#" onclick="go('logs');return false" style="color:var(--sky)">همهٔ لاگ‌ها</a></span></h2>
+    <div class="minilog" id="miniLog" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>📋 کارهای اخیر</h2>
+    <div class="jobs" id="dashJobs" style="margin-top:10px"></div>
+  </div>
+</section>
+
+<!-- ================= پلتفرم‌ها ================= -->
+<section class="view" id="v-platforms">
+  <h2>🌐 پلتفرم‌ها</h2>
+  <p class="muted small" style="margin:4px 0 14px">هر پلتفرم پروفایل مرورگر ماندگار خودش را دارد
+  (data/profiles/&lt;platform&gt;) — یک بار لاگین کن، برای همیشه حفظ می‌شود. مرورگر با لانچر مقاوم
+  (Edge ← Chrome ← Chromium) باز می‌شود.</p>
+  <div class="pgrid" id="pgrid"></div>
+</section>
+
+<!-- ================= وظایف ================= -->
+<section class="view" id="v-tasks">
+  <h2>⚙️ وظایف</h2>
+  <p class="muted small" style="margin:4px 0 14px">فلوهای چندمرحله‌ای JSON — همان چیزی که CLI با
+  <span class="mono">python main.py run</span> اجرا می‌کند، اینجا با یک کلیک.</p>
+  <div class="grid" style="grid-template-columns:280px 1fr;align-items:start" id="tasksGrid">
+    <div class="card">
+      <h2 style="font-size:14px">📁 فایل‌های تسک</h2>
+      <div id="taskFiles" style="margin-top:10px;display:flex;flex-direction:column;gap:6px"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sm" onclick="loadSamples()">✨ بارگذاری نمونه‌ها</button>
+        <button class="btn sm" onclick="newTask()">➕ تسک جدید</button>
+      </div>
+    </div>
+    <div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between">
+          <h2 style="font-size:14px">ویرایشگر تسک</h2>
+          <span class="tag dim" id="editorFile">—</span>
+        </div>
+        <div class="row" style="margin:10px 0 8px">
+          <select id="taskName" style="width:auto;min-width:190px"></select>
+          <button class="btn pri sm" onclick="runEditor()">▶ اجرای تسک انتخابی</button>
+          <button class="btn sm" onclick="runEditorAll()">▶▶ اجرای کل فایل</button>
+          <span style="flex:1"></span>
+          <button class="btn sm" onclick="saveTask()">💾 ذخیره</button>
+        </div>
+        <textarea class="code" id="taskEditor" spellcheck="false"></textarea>
+        <p class="small dim" style="margin-top:8px">انواع گام: <span class="mono">platform / browser / desktop / wait / notify / shell</span>
+        — نمونه‌ها را از tasks/examples.json ببین.</p>
+      </div>
+      <div class="card">
+        <h2 style="font-size:14px">📋 کارهای اخیر</h2>
+        <div class="jobs" id="taskJobs" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= ضبط ================= -->
+<section class="view" id="v-record">
+  <div class="card">
+    <div class="rechero">
+      <div class="recdot" id="recDot">⏺</div>
+      <div>
+        <h2>ضبط موس و کیبورد</h2>
+        <p class="muted small">همهٔ حرکات و کلیک‌ها و کلیدها ضبط می‌شود — بعداً با سرعت دلخواه بازپخش می‌شود.</p>
+      </div>
+      <span style="flex:1"></span>
+      <div class="recnums">
+        <div><div class="v" id="recCount">۰</div><div class="k small muted">رخداد</div></div>
+        <div><div class="v" id="recDur">۰s</div><div class="k small muted">مدت</div></div>
+      </div>
+      <button class="btn pri lg" id="recBtn" onclick="toggleRec()">⏺ شروع ضبط</button>
+    </div>
+    <hr class="sep">
+    <div class="row">
+      <input type="text" id="macroName" placeholder="نام ماکرو (مثل: ورود-به-سیستم)" style="max-width:260px">
+      <button class="btn" onclick="saveMacro()">💾 ذخیرهٔ آخرین ضبط</button>
+      <span class="small dim">یا کلید F9 = پایان و ذخیره · F10 = لغو</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>🎬 کتابخانهٔ ماکروها <span class="sub">macros/</span></h2>
+    <div style="overflow-x:auto;margin-top:10px">
+      <table class="mtable" id="macroTable">
+        <thead><tr><th>نام</th><th>رخداد</th><th>مدت</th><th>تاریخ ضبط</th><th>سرعت</th><th>تکرار</th><th></th></tr></thead>
+        <tbody id="macroRows"><tr><td colspan="7" class="dim" style="text-align:center;padding:18px">هنوز ماکرویی ذخیره نشده — اول یکی ضبط کن!</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ================= سیستم ================= -->
+<section class="view" id="v-system">
+  <h2>🖥️ کنترل سیستم</h2>
+  <p class="muted small" style="margin:4px 0 14px">موس، کیبورد و ویندوز — از همین مرورگر.
+  روی اسکرین‌شات کلیک کن تا همان‌جا کلیک واقعی انجام شود.</p>
+
+  <div class="card">
+    <div class="shotbar">
+      <div class="modes" id="shotModes">
+        <span class="mode on" data-m="click">کلیک</span>
+        <span class="mode" data-m="right">راست‌کلیک</span>
+        <span class="mode" data-m="double">دابل‌کلیک</span>
+        <span class="mode" data-m="move">حرکت</span>
+      </div>
+      <span style="flex:1"></span>
+      <span class="mono small" id="shotCoords" style="min-width:110px;color:var(--muted)">x: — y: —</span>
+      <button class="btn sm" onclick="refreshShot()">🔄 به‌روزرسانی</button>
+      <label class="small" style="display:flex;gap:5px;align-items:center;color:var(--muted)">
+        <input type="checkbox" id="autoShot"> خودکار</label>
+    </div>
+    <div class="shotwrap"><img id="shot" alt="اسکرین‌شات صفحه" draggable="false"></div>
+    <p class="small dim" style="margin-top:8px">⚠️ توقف اضطراری: موس را به گوشهٔ بالا-چپ صفحه ببر.</p>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <h2>⌨️ تایپ متن</h2>
+      <p class="small muted" style="margin:6px 0">متن فارسی به‌صورت هوشمند از کلیپ‌بورد تایپ می‌شود. اول روی پنجرهٔ هدف کلیک کن.</p>
+      <textarea id="typeText" placeholder="متنی که باید روی سیستم تایپ شود…"></textarea>
+      <div class="row" style="margin-top:9px">
+        <label class="small" style="display:flex;gap:6px;align-items:center;color:var(--muted)">
+          <input type="checkbox" id="typeEnter" checked> Enter در پایان</label>
+        <span style="flex:1"></span>
+        <button class="btn pri" onclick="sendText()">📤 ارسال</button>
+      </div>
+      <hr class="sep">
+      <h2 style="font-size:14px">🎛️ کلیدها و هاتکی‌ها</h2>
+      <div class="keygrid" style="margin:10px 0">
+        <span class="key" onclick="pressKey('enter')">Enter</span>
+        <span class="key" onclick="pressKey('esc')">Esc</span>
+        <span class="key" onclick="pressKey('tab')">Tab</span>
+        <span class="key" onclick="pressKey('backspace')">Backspace</span>
+        <span class="key" onclick="pressKey('delete')">Delete</span>
+        <span class="key" onclick="pressKey('up')">↑</span>
+        <span class="key" onclick="pressKey('down')">↓</span>
+        <span class="key" onclick="pressKey('left')">←</span>
+        <span class="key" onclick="pressKey('right')">→</span>
+        <span class="key" onclick="pressKey('home')">Home</span>
+        <span class="key" onclick="pressKey('end')">End</span>
+        <span class="key" onclick="pressKey('pgup')">PgUp</span>
+        <span class="key" onclick="pressKey('pgdown')">PgDn</span>
+      </div>
+      <div class="keygrid" style="margin:6px 0">
+        <span class="key" onclick="hotkey(['ctrl','c'])">Ctrl+C</span>
+        <span class="key" onclick="hotkey(['ctrl','v'])">Ctrl+V</span>
+        <span class="key" onclick="hotkey(['ctrl','x'])">Ctrl+X</span>
+        <span class="key" onclick="hotkey(['ctrl','a'])">Ctrl+A</span>
+        <span class="key" onclick="hotkey(['ctrl','z'])">Ctrl+S</span>
+        <span class="key" onclick="hotkey(['alt','tab'])">Alt+Tab</span>
+        <span class="key" onclick="hotkey(['win','d'])">Win+D</span>
+        <span class="key" onclick="hotkey(['win','r'])">Win+R</span>
+        <span class="key" onclick="hotkey(['ctrl','shift','esc'])">Ctrl+Shift+Esc</span>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <input type="text" id="customHot" class="mono" placeholder="ctrl+shift+t" style="flex:1;min-width:120px">
+        <button class="btn sm" onclick="customHotkey()">▶ اجرای هاتکی</button>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>🐭 اسکرول</h2>
+        <div class="keygrid" style="margin-top:10px">
+          <span class="key" onclick="scrollBy(600)">▲ بالا ×۲</span>
+          <span class="key" onclick="scrollBy(200)">▲ بالا</span>
+          <span class="key" onclick="scrollBy(-200)">▼ پایین</span>
+          <span class="key" onclick="scrollBy(-600)">▼ پایین ×۲</span>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <input type="number" id="scrollAmt" value="-400" style="width:90px">
+          <button class="btn sm" onclick="scrollBy(parseInt(document.getElementById('scrollAmt').value)||-3)">▶ اسکرول دلخواه</button>
+          <span class="small dim">(مثبت = بالا)</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>📊 اطلاعات سیستم</h2>
+        <button class="btn sm" style="margin:10px 0" onclick="sysinfo()">🔄 دریافت</button>
+        <div class="kv" id="sysInfoBox"><span class="dim small">برای نمایش، «دریافت» را بزن.</span></div>
+      </div>
+
+      <div class="card">
+        <h2>📂 باز کردن برنامه / فایل / سایت</h2>
+        <div class="row" style="margin-top:10px">
+          <input type="text" id="openTarget" placeholder="مثل notepad یا C:\... یا https://..." class="mono" style="flex:1">
+          <button class="btn sm" onclick="openApp()">باز کن</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>🔔 اعلان ویندوز</h2>
+        <div class="row" style="margin-top:10px">
+          <input type="text" id="ntTitle" placeholder="عنوان" style="flex:1">
+          <input type="text" id="ntMsg" placeholder="متن اعلان" style="flex:1">
+          <button class="btn sm" onclick="notifyWin()">ارسال</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <h2>💻 دستور سیستمی <span class="sub">CMD</span></h2>
+      <div class="row" style="margin-top:10px">
+        <input type="text" id="cmdIn" class="mono" placeholder="dir یا ipconfig یا ..." style="flex:1">
+        <button class="btn sm" onclick="runCmd()">▶ اجرا</button>
+      </div>
+      <pre class="out" id="cmdOut" style="margin-top:10px;min-height:90px">—</pre>
+    </div>
+    <div class="card">
+      <h2>⏻ قدرت سیستم</h2>
+      <div class="row" style="margin-top:10px">
+        <button class="btn sm" onclick="lockNow()">🔒 قفل کردن</button>
+        <input type="number" id="shutMin" value="60" min="1" style="width:80px" title="دقیقه">
+        <button class="btn danger sm" onclick="shutdownSys()">⏻ خاموشی</button>
+        <button class="btn warn sm" onclick="abortShutdown()">↺ لغو خاموشی</button>
+      </div>
+      <p class="small dim" style="margin-top:10px">خاموشی با تأخیر انجام می‌شود و تا آخرین لحظه قابل لغو است.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ================= لاگ ================= -->
+<section class="view" id="v-logs">
+  <h2>📜 لاگ‌های زنده</h2>
+  <div class="logtoolbar">
+    <select id="logSrc"><option value="">همهٔ منابع</option></select>
+    <select id="logLvl">
+      <option value="">همهٔ سطوح</option><option>info</option><option>warning</option>
+      <option>error</option><option>debug</option><option>critical</option>
+    </select>
+    <input type="text" id="logSearch" placeholder="جستجو در متن…">
+    <span class="small dim" id="logCount"></span>
+    <span style="flex:1"></span>
+    <label class="small" style="display:flex;gap:5px;align-items:center;color:var(--muted)">
+      <input type="checkbox" id="logAuto" checked> اسکرول خودکار</label>
+    <button class="btn sm" onclick="exportLogs()">⬇ خروجی</button>
+    <button class="btn sm" onclick="LOGS=[];renderLogs();renderMini()">🧹 پاک‌کردن</button>
+  </div>
+  <div id="logbox"></div>
+</section>
+
+<!-- ================= تنظیمات ================= -->
+<section class="view" id="v-settings">
+
+  <!-- 🛡️ ضد شناسایی بات -->
+  <div class="card">
+    <h2>🛡️ ضد شناسایی بات <span class="sub">آخرین متدها · روی همهٔ پلتفرم‌ها</span></h2>
+    <p class="small muted" style="margin:6px 0 0">پارس‌ایجنت قبل از باز شدن هر مرورگر، سه لایهٔ مخفی‌سازی
+    اعمال می‌کند: آرگومان‌های ضد اتوماسیون + تزریق اسکریپت در هر فریم + رفتار انسانی.
+    اثر انگشت هر پروفایل <b>پایدار</b> است — بین اجراها تغییر نمی‌کند تا حساب‌ها مشکوک نشوند.</p>
+    <div class="row" style="margin:14px 0 10px">
+      <label class="sw"><input type="checkbox" id="stEnabled" checked><i></i></label>
+      <b style="font-size:13.5px">فعال‌سازی کلی</b>
+      <span style="flex:1"></span>
+      <span class="small dim" style="margin-inline-end:6px">سطح پیش‌فرض:</span>
+      <div class="modes" id="stLevels">
+        <span class="mode" data-l="basic">پایه</span>
+        <span class="mode on" data-l="standard">استاندارد</span>
+        <span class="mode" data-l="max">حداکثر</span>
+      </div>
+    </div>
+    <div class="grid g2" id="stMods" style="gap:8px"></div>
+    <hr class="sep">
+    <div class="row">
+      <button class="btn pri" onclick="saveStealth()">💾 ذخیرهٔ تنظیمات ضد شناسایی</button>
+      <select id="stProbePlat" style="width:auto;min-width:150px"></select>
+      <button class="btn" onclick="stealthProbe()">🧪 تست سریع اثر انگشت</button>
+      <button class="btn" onclick="openBotTest()">🌍 سایت تست بات</button>
+    </div>
+    <div id="probeBox" style="display:none;margin-top:12px"></div>
+    <p class="small dim" style="margin-top:10px">⚠️ بعد از روشن‌کردن نویز اثر انگشت (Canvas/Audio)،
+    امضای مرورگر عوض می‌شود — بار اول ممکن است پلتفرم‌ها دوباره تأیید بخواهند؛ بعد از آن همه‌چیز پایدار می‌ماند.
+    «تست سریع» صفحهٔ محلی باز می‌کند و ۷ نشانهٔ اتوماسیون را همان‌جا چک می‌کند.
+    برای اعمال روی مرورگرهای باز، سرور را از لانچر ری‌استارت کن.</p>
+  </div>
+
+  <!-- 🔑 حساب‌ها و ورود خودکار -->
+  <div class="card">
+    <h2>🔑 حساب‌ها و ورود خودکار <span class="sub">data/credentials.json — فقط روی سیستم خودت</span></h2>
+    <p class="small muted" style="margin:6px 0 0">نام کاربری و رمز هر پلتفرم را یک بار اینجا ذخیره کن؛
+    از این به بعد دکمهٔ «⚡ ورود خودکار» در تب پلتفرم‌ها همه‌چیز را خودش پر می‌کند — کپچا و کد دو مرحله‌ای
+    (TOTP) را هم خودش حل می‌کند. برای پیام‌رسان‌های شماره‌محور (تلگرام/بله/روبیکا/ایتا) شماره پر می‌شود
+    و کد SMS را در همان پنجرهٔ باز وارد می‌کنی (پیامک به گوشی خودت می‌آید).</p>
+    <div class="platchips" id="credPlats" style="margin-top:12px"></div>
+    <div class="grid g2" style="margin-top:14px;align-items:start">
+      <div id="credFormWrap">
+        <h2 style="font-size:15px" id="credTitle">—</h2>
+        <p class="small dim" id="credHint" style="margin:4px 0 10px"></p>
+        <div id="credFields"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn pri" onclick="saveCred()">💾 ذخیرهٔ حساب</button>
+          <button class="btn danger" onclick="clearCred()">🗑 پاک‌کردن این حساب</button>
+        </div>
+        <p class="small dim" style="margin-top:8px">🔒 رمزها هرگز به مرورگر برگردانده نمی‌شوند —
+        فقط «ذخیره شده ✓» نمایش داده می‌شود. خالی گذاشتن رمز یعنی پاک‌شدن آن.</p>
+      </div>
+      <div class="card" style="margin:0;background:var(--card)">
+        <h2 style="font-size:14px">🤖 حل خودکار کپچا</h2>
+        <p class="small dim" style="margin:6px 0">اگر سر راه ورود کپچا بود (reCAPTCHA v2/v3 ·
+        hCaptcha · Turnstile · FunCaptcha · کپچای تصویری)، خودش حلش می‌کند.</p>
+        <label class="f">سرویس حل کپچا</label>
+        <select id="capProvider">
+          <option value="2captcha">2Captcha (پیشنهادی)</option>
+          <option value="rucaptcha">RuCaptcha</option>
+        </select>
+        <label class="f">کلید API</label>
+        <input type="password" id="capKey" placeholder="از سایت سرویس بگیر و اینجا بچسبان">
+        <div class="row" style="margin-top:10px">
+          <label class="sw"><input type="checkbox" id="capAuto" checked><i></i></label>
+          <span class="small" style="color:var(--muted)">حل خودکار در ورود</span>
+          <span style="flex:1"></span>
+          <button class="btn sm pri" onclick="saveCaptcha()">💾 ذخیره</button>
+        </div>
+        <p class="small dim" style="margin-top:8px">کلید 2captcha.com را از بخش API سایتش می‌گیری؛
+        شارژ و استفاده فقط بین سیستم خودت و همان سرویس است.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid g2">
+    <div class="card">
+      <h2>🔧 config.json</h2>
+      <p class="small muted" style="margin:6px 0 10px">همان فایلی که CLI استفاده می‌کند — مسیر، پروکسی،
+      هدلس، تأخیرهای انسانی، ترتیب fallback مرورگرها و… (تنظیمات ضد شناسایی و حساب‌ها در کارت‌های بالا مدیریت می‌شوند)</p>
+      <textarea class="code" id="cfgEditor" spellcheck="false"></textarea>
+      <div class="row" style="margin-top:10px">
+        <button class="btn pri" onclick="saveConfig()">💾 اعتبارسنجی و ذخیره</button>
+        <button class="btn" onclick="loadConfig()">↺ بارگذاری مجدد</button>
+        <button class="btn warn" onclick="resetConfig()">بازگردانی پیش‌فرض</button>
+      </div>
+      <p class="small dim" style="margin-top:8px">بعد از ذخیره، برای اعمال کامل روی موتورهای باز، سرور را از لانچر ری‌استارت کن.</p>
+    </div>
+    <div>
+      <div class="card">
+        <h2>📡 دربارهٔ این پنل</h2>
+        <div class="kv" style="margin-top:10px">
+          <span class="k">آدرس پنل</span><span class="mono">http://127.0.0.1:8765</span>
+          <span class="k">قابلیت دسترسی</span><span>فقط همین سیستم (127.0.0.1) — از شبکه قابل دسترس نیست</span>
+          <span class="k">نیاز به اینترنت</span><span>ندارد؛ فقط سایت‌هایی که خودت باز می‌کنی</span>
+          <span class="k">معادل CLI</span><span class="mono small">python main.py …</span>
+        </div>
+      </div>
+      <div class="card">
+        <h2>🛡️ نکتهٔ امنیتی</h2>
+        <p class="small muted" style="margin-top:8px;line-height:2">
+        این سرور روی آدرس حلقهٔ محلی (loopback) اجرا می‌شود؛ هیچ درخواستی از بیرونِ همین کامپیوتر
+        پذیرفته نمی‌شود. اگر آنتی‌ویروس روی pynput/pyautogui هشدار داد، اجازهٔ اجرا بده —
+        این کتابخانه‌ها برای ضبط/کنترل ورودی لازم‌اند و فقط روی همین سیستم کار می‌کنند.</p>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+</div>
+
+<footer>
+  <span>🤖 ParsAgent v1.2</span>
+  <span id="ftSrv">—</span>
+  <span style="flex:1"></span>
+  <span>سرور محلی · بدون ارسال داده به بیرون</span>
+  <span class="mono" id="ftClock"></span>
+</footer>
+
+<div id="toasts"></div>
+<div id="modal" onclick="if(event.target===this)closeModal()"><div class="box" id="modalBox"></div></div>
+
+<script>
+"use strict";
+/* ============================================================ helpers */
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const faN=n=>Number(n||0).toLocaleString('fa-IR');
+let DEMO=false, WS=null, LOGS=[], JOBMAP=new Map(), STATE=null;
+let CURRENT_VIEW='dash', CUR_FILE=null;
+const JICON={running:'<span class="spin"></span>',done:'✅',failed:'❌',cancelled:'⏹'};
+
+function toast(msg,level='ok'){
+  const t=document.createElement('div');t.className='toast '+level;
+  const ic=level==='ok'?'✓':level==='err'?'✕':level==='warn'?'⚠':'ℹ';
+  t.innerHTML=`<span>${ic}</span><span>${esc(msg)}</span>`;
+  $('#toasts').appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';t.style.transition='.4s';setTimeout(()=>t.remove(),400)},4200);
+}
+async function api(path,method='GET',body=null){
+  if(DEMO){toast('در حالت پیش‌نمایش غیرفعال است — روی سیستم خودت اجرا کن','warn');throw new Error('demo');}
+  const opt={method,headers:{'Content-Type':'application/json'}};
+  if(body)opt.body=JSON.stringify(body);
+  let r;
+  try{r=await fetch(path,opt);}catch(e){toast('ارتباط با سرور برقرار نشد','err');throw e;}
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.detail||('خطای '+r.status));
+  return j;
+}
+function go(v){
+  CURRENT_VIEW=v;
+  $$('nav button').forEach(b=>b.classList.toggle('active',b.dataset.v===v));
+  $$('.view').forEach(s=>s.classList.toggle('active',s.id==='v-'+v));
+  if(v==='system')refreshShot();
+  if(v==='settings'&&!SETTINGS_LOADED){SETTINGS_LOADED=true;loadSettings();}
+}
+$$('nav button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+setInterval(()=>{$('#ftClock').textContent=new Date().toLocaleTimeString('fa-IR')},1000);
+
+/* ============================================================ catalog fallback (پیش‌نمایش) */
+const FALLBACK_PLATFORMS=[
+ {id:'instagram',fa:'اینستاگرام',color:'#e1306c',url:'https://www.instagram.com/',open:false,actions:[
+   {id:'post_photo',fa:'انتشار عکس با کپشن',fields:[{key:'image',fa:'مسیر عکس',type:'text'},{key:'caption',fa:'کپشن',type:'textarea'}]},
+   {id:'upload_story',fa:'آپلود استوری',fields:[{key:'image',fa:'مسیر عکس',type:'text'}]},
+   {id:'send_dm',fa:'ارسال دایرکت',fields:[{key:'username',fa:'یوزرنیم',type:'text'},{key:'message',fa:'پیام',type:'textarea'}]},
+   {id:'follow',fa:'فالو',fields:[{key:'username',fa:'یوزرنیم',type:'text'}]},
+   {id:'like_latest',fa:'لایک پست‌های جدید',fields:[{key:'count',fa:'تعداد',type:'number',value:3}]},
+   {id:'comment',fa:'کامنت',fields:[{key:'post_url',fa:'لینک پست',type:'text'},{key:'text',fa:'متن',type:'textarea'}]}]},
+ {id:'twitter',fa:'توییتر (X)',color:'#9aa7b8',url:'https://twitter.com/',open:false,actions:[
+   {id:'post_tweet',fa:'ارسال توییت',fields:[{key:'text',fa:'متن',type:'textarea'},{key:'image',fa:'مسیر عکس (اختیاری)',type:'text',optional:true}]},
+   {id:'send_dm',fa:'ارسال دایرکت',fields:[{key:'username',fa:'یوزرنیم',type:'text'},{key:'message',fa:'پیام',type:'textarea'}]},
+   {id:'follow',fa:'فالو',fields:[{key:'username',fa:'یوزرنیم',type:'text'}]},
+   {id:'like',fa:'لایک',fields:[{key:'post_url',fa:'لینک توییت',type:'text'}]},
+   {id:'retweet',fa:'ریتوییت',fields:[{key:'post_url',fa:'لینک توییت',type:'text'}]}]},
+ {id:'telegram',fa:'تلگرام',color:'#229ed9',url:'https://web.telegram.org/k/',open:false,actions:[
+   {id:'send_message',fa:'ارسال پیام',fields:[{key:'chat',fa:'نام چت',type:'text'},{key:'text',fa:'متن',type:'textarea'}]},
+   {id:'post_channel',fa:'ارسال در کانال',fields:[{key:'channel',fa:'نام کانال',type:'text'},{key:'text',fa:'متن',type:'textarea'},{key:'image',fa:'مسیر عکس (اختیاری)',type:'text',optional:true}]},
+   {id:'send_group_message',fa:'پیام در گروه',fields:[{key:'group',fa:'نام گروه',type:'text'},{key:'text',fa:'متن',type:'textarea'}]}]},
+ {id:'facebook',fa:'فیسبوک',color:'#1877f2',url:'https://www.facebook.com/',open:false,actions:[
+   {id:'post_status',fa:'انتشار پست',fields:[{key:'text',fa:'متن',type:'textarea'},{key:'image',fa:'مسیر عکس (اختیاری)',type:'text',optional:true}]},
+   {id:'like_post',fa:'لایک پست',fields:[{key:'post_url',fa:'لینک پست',type:'text'}]},
+   {id:'comment',fa:'کامنت',fields:[{key:'post_url',fa:'لینک پست',type:'text'},{key:'text',fa:'متن',type:'textarea'}]}]},
+ {id:'linkedin',fa:'لینکدین',color:'#0a66c2',url:'https://www.linkedin.com/',open:false,actions:[
+   {id:'post',fa:'انتشار پست',fields:[{key:'text',fa:'متن',type:'textarea'},{key:'image',fa:'مسیر عکس (اختیاری)',type:'text',optional:true}]},
+   {id:'connect',fa:'درخواست اتصال',fields:[{key:'profile_url',fa:'لینک پروفایل',type:'text'},{key:'note',fa:'یادداشت',type:'textarea',optional:true}]},
+   {id:'send_dm',fa:'پیام مستقیم',fields:[{key:'profile_url',fa:'لینک پروفایل',type:'text'},{key:'message',fa:'پیام',type:'textarea'}]}]},
+ {id:'bale',fa:'بله',color:'#20c997',url:'https://web.bale.ai/',open:false,actions:[
+   {id:'send_message',fa:'ارسال پیام',fields:[{key:'chat',fa:'نام چت',type:'text'},{key:'text',fa:'متن',type:'textarea'}]},
+   {id:'post_channel',fa:'ارسال در کانال',fields:[{key:'channel',fa:'نام کانال',type:'text'},{key:'text',fa:'متن',type:'textarea'}]}]},
+ {id:'rubika',fa:'روبیکا',color:'#e0457b',url:'https://web.rubika.ir/',open:false,actions:[
+   {id:'send_message',fa:'ارسال پیام',fields:[{key:'chat',fa:'نام چت',type:'text'},{key:'text',fa:'متن',type:'textarea'}]},
+   {id:'post_channel',fa:'ارسال در کانال',fields:[{key:'channel',fa:'نام کانال',type:'text'},{key:'text',fa:'متن',type:'textarea'}]}]},
+ {id:'eitaa',fa:'ایتا',color:'#f0a52e',url:'https://web.eitaa.com/',open:false,actions:[
+   {id:'send_message',fa:'ارسال پیام',fields:[{key:'chat',fa:'نام چت',type:'text'},{key:'text',fa:'متن',type:'textarea'}]},
+   {id:'post_channel',fa:'ارسال در کانال',fields:[{key:'channel',fa:'نام کانال',type:'text'},{key:'text',fa:'متن',type:'textarea'}]}]}
+];
+
+/* ============================================================ websocket */
+function connectWS(){
+  try{
+    WS=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/ws/logs');
+    WS.onopen=()=>{$('#wsDot').className='dot ok';$('#wsTxt').textContent='متصل';};
+    WS.onmessage=ev=>{try{handleMsg(JSON.parse(ev.data))}catch(e){}};
+    WS.onclose=()=>{$('#wsDot').className='dot err';$('#wsTxt').textContent='قطع';
+      if(!DEMO)setTimeout(connectWS,3000);};
+    WS.onerror=()=>{};
+  }catch(e){}
+}
+function handleMsg(m){
+  if(m.type==='log'){LOGS.push(m);trimLogs();if(CURRENT_VIEW==='logs')renderLogs();renderMini();}
+  else if(m.type==='hello'){
+    (m.logs||[]).forEach(l=>LOGS.push(l));trimLogs();renderLogs();renderMini();
+    (m.jobs||[]).forEach(j=>JOBMAP.set(j.id,j));renderJobs();
+    if(m.recording)updateRecUI({active:true,count:m.recording.count||0,duration:m.recording.duration||0});
+  }
+  else if(m.type==='job'){JOBMAP.set(m.job.id,m.job);renderJobs();}
+  else if(m.type==='record'){updateRecUI(m);}
+}
+function trimLogs(){if(LOGS.length>600)LOGS.splice(0,LOGS.length-600)}
+
+/* ============================================================ logs view */
+function renderLogs(){
+  const src=$('#logSrc').value,lvl=$('#logLvl').value,q=$('#logSearch').value.trim();
+  const box=$('#logbox');
+  const srcs=new Set(LOGS.map(l=>l.name));
+  const opts=['<option value="">همهٔ منابع</option>',...[...srcs].sort().map(s=>`<option${s===src?' selected':''}>${esc(s)}</option>`)];
+  $('#logSrc').innerHTML=opts.join('');
+  const rows=LOGS.filter(l=>(!src||l.name===src)&&(!lvl||l.level===lvl)&&(!q||String(l.msg).includes(q)));
+  box.innerHTML=rows.slice(-400).map(l=>
+    `<div class="lg ${l.level}"><span class="t">${esc(l.ts)}</span><span class="s">${esc(l.name)}</span><span class="m">${esc(l.msg)}</span></div>`).join('')
+    ||'<div class="dim" style="padding:20px;text-align:center">لاگی مطابق فیلترها نیست</div>';
+  $('#logCount').textContent=faN(rows.length)+' خط';
+  if($('#logAuto').checked)box.scrollTop=box.scrollHeight;
+}
+['logLvl','logSearch'].forEach(id=>$('#'+id).addEventListener('input',renderLogs));
+$('#logSrc').addEventListener('change',renderLogs);
+function renderMini(){
+  $('#miniLog').innerHTML=LOGS.slice(-8).map(l=>
+    `<div class="lg ${l.level}" style="font-size:11.5px"><span class="t">${esc(l.ts)}</span><span class="s">${esc(l.name)}</span><span class="m">${esc(String(l.msg).slice(0,110))}</span></div>`).join('')
+    ||'<div class="dim small">هنوز رویدادی ثبت نشده.</div>';
+}
+function exportLogs(){
+  const txt=LOGS.map(l=>`${l.ts} [${l.level}] ${l.name}: ${l.msg}`).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([txt],{type:'text/plain'}));
+  a.download='parsagent-log.txt';a.click();
+}
+
+/* ============================================================ jobs */
+function addJob(job){JOBMAP.set(job.id,job);renderJobs();
+  toast(`شروع شد: ${job.label}`,'info');}
+function renderJobs(){
+  const list=[...JOBMAP.values()].sort((a,b)=>b.id.localeCompare(a.id,undefined,{numeric:true})).slice(0,14);
+  const html=list.map(j=>`<div class="job" data-id="${j.id}">
+      <span class="jstat ${j.status}">${JICON[j.status]||'·'}</span>
+      <span class="jl" title="${esc(j.error||'')}">${esc(j.label)}${j.error?` <span style="color:var(--err)">— ${esc(String(j.error).slice(0,90))}</span>`:''}</span>
+      <span class="jt">${esc((j.started_at||'').slice(11,19))}</span>
+      ${j.cancellable&&j.status==='running'?`<button class="btn sm danger" onclick="cancelJob('${j.id}')">توقف</button>`:''}
+      ${j.status!=='running'?`<button class="btn sm ghost" onclick="jobDetail('${j.id}')">نتیجه</button>`:''}
+    </div>`).join('')||'<div class="dim small" style="text-align:center;padding:14px">هنوز کاری اجرا نشده.</div>';
+  const dj=$('#dashJobs'),tj=$('#taskJobs');
+  if(dj)dj.innerHTML=html;
+  if(tj)tj.innerHTML=html;
+  const running=list.filter(j=>j.status==='running').length;
+  if($('#stJobs'))$('#stJobs').textContent=faN(running);
+}
+async function cancelJob(id){try{await api('/api/jobs/cancel','POST',{id});toast('درخواست توقف ثبت شد','warn')}catch(e){}}
+async function jobDetail(id){
+  try{
+    const j=await api('/api/jobs/'+id);
+    const r=j.result;
+    let html='';
+    if(r&&r.image)html=`<img src="data:image/png;base64,${r.image}"><p class="small dim mono" style="margin-top:8px">${esc(r.path||'')}</p>`;
+    else if(r&&r.steps){                       // نتیجهٔ ورود خودکار
+      html=r.steps.map(s=>`<div class="checkrow"><span class="ok">✓</span><span style="flex:1">${esc(s)}</span></div>`).join('');
+      if(r.captcha)html+=r.captcha.solved
+        ?`<div class="checkrow"><span class="ok">🤖</span><span style="flex:1">کپچای ${esc(r.captcha.kind)} حل و تزریق شد</span></div>`
+        :`<div class="checkrow"><span class="bad">🤖</span><span style="flex:1">کپچا حل نشد: ${esc(r.captcha.reason||r.captcha.kind||'')}</span></div>`;
+      if(r.needs==='code')html+=`<div class="checkrow"><span class="bad">📱</span><span style="flex:1">کد تأیید لازم است — در پنجرهٔ مرورگر باز واردش کن؛ پروفایل ماندگار است و ورودت حفظ می‌شود</span></div>`;
+      html+=r.ok
+        ?'<div class="checkrow"><span class="ok">✓</span><span style="flex:1">ورود کامل شد ✓</span></div>'
+        :'<div class="checkrow"><span class="bad">…</span><span style="flex:1">نتیجه قطعی نبود — پنجرهٔ مرورگر باز ماند</span></div>';
+    }
+    else if(r&&r.checks&&r.raw){               // نتیجهٔ تست اثر انگشت
+      html=`<div class="grid" style="gap:6px">${r.checks.map(c=>`<div class="checkrow"><span class="${c.pass?'ok':'bad'}">${c.pass?'✓':'✗'}</span><span style="flex:1">${esc(c.label)}</span><span class="mono small dim" style="max-width:44%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr">${esc(c.actual||'')}</span></div>`).join('')}</div>`;
+    }
+    else if(r)html=`<pre class="out">${esc(JSON.stringify(r,null,2))}</pre>`;
+    else html=`<p class="muted">${j.error?('خطا: '+esc(j.error)):'نتیجه‌ای برای نمایش نیست.'}</p>`;
+    showModal(`<h2>🧾 ${esc(j.label)}</h2><p class="small dim" style="margin:6px 0 12px">
+      وضعیت: <span class="jstat ${j.status}">${j.status}</span> ·
+      شروع: ${esc(j.started_at)} · پایان: ${esc(j.finished_at||'—')}</p>${html}`);
+  }catch(e){}}
+function showModal(html){$('#modalBox').innerHTML=html;$('#modal').classList.add('show')}
+function closeModal(){$('#modal').classList.remove('show')}
+
+/* ============================================================ platforms */
+function platforms(){return (STATE&&STATE.platforms)||FALLBACK_PLATFORMS}
+function renderPlatforms(){
+  const plats=platforms();
+  $('#pgrid').innerHTML=plats.map(p=>`
+   <div class="pcard">
+     <div class="head">
+       <span class="pd" style="background:${p.color}"></span>
+       <b>${esc(p.fa)}</b>
+       ${p.has_creds?'<span class="tag ok" title="اعتبارنامه ذخیره شده">🔑 حساب</span>':''}
+       <span style="flex:1"></span>
+       <span class="tag ${p.open?'ok':'dim'}">${p.open?'مرورگر باز':'بسته'}</span>
+     </div>
+     <div class="url mono">${esc(p.url||'')}</div>
+     <div class="btns">
+       <button class="btn sm pri" onclick="openPlat('${p.id}')">🌐 ${p.open?'نمایش/رفرش':'باز کردن مرورگر'}</button>
+       <button class="btn sm" onclick="autoLogin('${p.id}')" title="با حساب ذخیره‌شده در تنظیمات">⚡ ورود خودکار</button>
+       <button class="btn sm" onclick="checkLogin('${p.id}')">🔑 بررسی ورود</button>
+       <button class="btn sm" onclick="platShot('${p.id}')">📸 اسکرین‌شات</button>
+       ${p.open?`<button class="btn sm danger" onclick="closePlat('${p.id}')">⛔ بستن</button>`:''}
+     </div>
+     <div class="actionbox">
+       <label class="f">⚡ اجرای سریع اکشن</label>
+       <select id="act-${p.id}" onchange="renderActionFields('${p.id}')">
+         ${(p.actions||[]).map(a=>`<option value="${a.id}">${esc(a.fa)}</option>`).join('')}
+       </select>
+       <div class="afields" id="af-${p.id}"></div>
+       <button class="btn sm pri" onclick="runAction('${p.id}')">▶ اجرا</button>
+     </div>
+   </div>`).join('');
+  plats.forEach(p=>renderActionFields(p.id));
+  $('#quickPlats').innerHTML=plats.map(p=>
+    `<span class="pchip" onclick="openPlat('${p.id}')"><span class="pd" style="background:${p.color}"></span>${esc(p.fa)} ${p.open?'<span class="tag ok">باز</span>':''}</span>`).join('');
+}
+function renderActionFields(pid){
+  const p=platforms().find(x=>x.id===pid);if(!p)return;
+  const sel=$('#act-'+pid);if(!sel)return;
+  const aid=sel.value;if(!aid)return;
+  const act=(p.actions||[]).find(a=>a.id===aid)||{fields:[]};
+  $('#af-'+pid).innerHTML=(act.fields||[]).map(f=>{
+    if(f.type==='textarea')return `<textarea data-k="${f.key}" placeholder="${esc(f.fa)}${f.optional?' (اختیاری)':''}"></textarea>`;
+    if(f.type==='number')return `<input type="number" data-k="${f.key}" value="${f.value??1}" placeholder="${esc(f.fa)}">`;
+    return `<input type="text" data-k="${f.key}" placeholder="${esc(f.fa)}${f.optional?' (اختیاری)':''}">`;
+  }).join('')||'<span class="small dim">پارامتری ندارد</span>';
+}
+async function openPlat(pid){
+  try{addJob(await api('/api/platform/open','POST',{platform:pid}))}catch(e){}
+}
+async function closePlat(pid){
+  try{addJob(await api('/api/platform/close','POST',{platform:pid}))}catch(e){}
+}
+async function checkLogin(pid){
+  try{const j=await api('/api/platform/logged_in','POST',{platform:pid});
+    addJob(j);
+    toast('در حال بررسی — نتیجه در «کارهای اخیر»','info')}catch(e){}
+}
+async function platShot(pid){
+  try{const j=await api('/api/platform/screenshot','POST',{platform:pid});
+    addJob(j);
+    const poll=setInterval(async()=>{
+      try{const d=await api('/api/jobs/'+j.id);
+        if(d.status!=='running'){clearInterval(poll);
+          if(d.status==='done'&&d.result&&d.result.image)
+            showModal(`<h2>📸 اسکرین‌شات ${esc(pid)}</h2><p class="small dim mono" style="margin:6px 0 10px">${esc(d.result.url||'')}</p><img src="data:image/png;base64,${d.result.image}">`);
+          else if(d.error)toast(d.error,'err');}
+      }catch(e){clearInterval(poll)}},900);}catch(e){}
+}
+async function runAction(pid){
+  const p=platforms().find(x=>x.id===pid);
+  const aid=$('#act-'+pid).value;
+  const act=(p.actions||[]).find(a=>a.id===aid)||{fields:[]};
+  const args={};let ok=true;
+  (act.fields||[]).forEach(f=>{
+    const el=$(`#af-${pid} [data-k="${f.key}"]`);if(!el)return;
+    const v=el.value.trim();
+    if(!v){if(!f.optional){toast(`«${f.fa}» را پر کن`,'warn');ok=false}return}
+    args[f.key]=f.type==='number'?Number(v):v;});
+  if(!ok)return;
+  try{addJob(await api('/api/action/run','POST',{platform:pid,action:aid,args}))}catch(e){}
+}
+
+/* ============================================================ tasks */
+function renderTaskFiles(){
+  const files=(STATE&&STATE.task_files)||[];
+  $('#taskFiles').innerHTML=files.map(f=>`
+    <div style="display:flex;gap:6px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 11px">
+      <span style="flex:1;min-width:0;overflow:hidden">
+        <div class="mono small" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(f.file)}</div>
+        <div class="small dim" style="margin-top:2px">${esc(f.description||faN(f.count)+' تسک')}</div>
+      </span>
+      <button class="btn sm" title="باز کردن در ویرایشگر" onclick="loadTask('${esc(f.file)}')">✎</button>
+      <button class="btn sm pri" title="اجرا" onclick="runTaskFile('${esc(f.file)}')">▶</button>
+    </div>`).join('')||'<div class="dim small">فایلی نیست — «بارگذاری نمونه‌ها» را بزن.</div>';
+}
+async function loadTask(file){
+  try{
+    const r=await api('/api/tasks/content?file='+encodeURIComponent(file));
+    CUR_FILE=file;
+    $('#taskEditor').value=r.content;
+    $('#editorFile').textContent=file;
+    refreshNames();
+  }catch(e){}
+}
+function refreshNames(){
+  try{
+    const data=JSON.parse($('#taskEditor').value||'{}');
+    const tasks=data.tasks||[data];
+    $('#taskName').innerHTML=(tasks||[]).filter(t=>t&&t.name).map(t=>`<option>${esc(t.name)}</option>`).join('')
+      ||'<option value="">—</option>';
+  }catch(e){$('#taskName').innerHTML='<option value="">JSON نامعتبر</option>'}
+}
+$('#taskEditor').addEventListener('input',refreshNames);
+async function runTaskFile(file){
+  try{addJob(await api('/api/tasks/run','POST',{file}))}catch(e){}
+}
+async function runEditor(){
+  let task=null;
+  try{task=JSON.parse($('#taskEditor').value)}catch(e){toast('JSON ویرایشگر نامعتبر است: '+e.message,'err');return}
+  try{addJob(await api('/api/tasks/run','POST',{task}))}catch(e){}
+}
+async function runEditorAll(){
+  if(!CUR_FILE){toast('اول یک فایل تسک باز کن','warn');return}
+  runTaskFile(CUR_FILE);
+}
+async function saveTask(){
+  let name=CUR_FILE;
+  if(!name){name=prompt('نام فایل (مثل my-tasks.json):','my-tasks.json');if(!name)return}
+  const content=$('#taskEditor').value;
+  try{await api('/api/tasks/save','POST',{file:name,content});
+    CUR_FILE=name.endsWith('.json')?name:name+'.json';$('#editorFile').textContent=CUR_FILE;
+    toast('ذخیره شد ✓');refreshState();}catch(e){}
+}
+function newTask(){
+  CUR_FILE=null;
+  $('#editorFile').textContent='تسک جدید (بدون ذخیره)';
+  $('#taskEditor').value=JSON.stringify({
+    name:"my_first_task",
+    description:"تسک جدید ساخته‌شده از پنل",
+    vars:{message:"سلام از پارس‌ایجنت 🤖"},
+    steps:[{type:"notify",message:"{{message}}"}],
+    on_error:"continue",retries:0
+  },null,2);
+  refreshNames();
+}
+async function loadSamples(){
+  try{const r=await api('/api/tasks/load_samples','POST',{});
+    toast(r.created?'نمونه‌ها ساخته شد ✓':'نمونه‌ها از قبل موجودند');
+    await refreshState();loadTask('examples.json');}catch(e){}
+}
+async function runSampleTask(){
+  const files=(STATE&&STATE.task_files)||[];
+  if(!files.find(f=>f.file==='examples.json')){await loadSamples();return}
+  runTaskFile('examples.json');
+}
+
+/* ============================================================ record */
+let recState={active:false,count:0,duration:0};
+function updateRecUI(m){
+  recState=Object.assign(recState,m);
+  $('#recDot').classList.toggle('on',recState.active);
+  $('#recBtn').innerHTML=recState.active?'⏹ توقف ضبط':'⏺ شروع ضبط';
+  $('#recBtn').classList.toggle('danger',recState.active);
+  $('#recCount').textContent=faN(recState.count||0);
+  $('#recDur').textContent=faN(Math.round(recState.duration||0))+'s';
+  $('#recChip').style.display=recState.active?'':'none';
+  if($('#stRec'))$('#stRec').textContent=recState.active?'فعال':'خاموش';
+}
+async function toggleRec(){
+  try{
+    if(recState.active){await api('/api/record/stop','POST',{});}
+    else{await api('/api/record/start','POST',{});updateRecUI({active:true,count:0,duration:0});}
+  }catch(e){}
+}
+async function saveMacro(){
+  const name=$('#macroName').value.trim();
+  try{const r=await api('/api/macros/save','POST',{name});
+    $('#macroName').value='';toast(`ماکرو «${r.name}» ذخیره شد ✓`);refreshState();}catch(e){}
+}
+function renderMacros(){
+  const macros=(STATE&&STATE.macros)||[];
+  $('#macroRows').innerHTML=macros.map(m=>`
+   <tr>
+     <td><b>${esc(m.name)}</b></td>
+     <td>${faN(m.events)}</td>
+     <td>${faN(Math.round(m.duration||0))}s</td>
+     <td class="dim small">${esc((m.recorded_at||'').slice(0,16).replace('T',' '))}</td>
+     <td><select class="mspeed" data-n="${esc(m.name)}" style="width:80px;padding:4px 6px">
+       ${[0.5,0.75,1,1.5,2,3].map(s=>`<option value="${s}"${s==1?' selected':''}>×${s}</option>`).join('')}</select></td>
+     <td><input class="mloop" data-n="${esc(m.name)}" type="number" value="1" min="1" max="50" style="width:60px;padding:4px 6px"></td>
+     <td style="white-space:nowrap">
+       <button class="btn sm pri" onclick="playMacro('${esc(m.name)}')">▶</button>
+       <button class="btn sm danger" onclick="delMacro('${esc(m.name)}')">🗑</button>
+     </td>
+   </tr>`).join('')||'<tr><td colspan="7" class="dim" style="text-align:center;padding:18px">هنوز ماکرویی ذخیره نشده — اول یکی ضبط کن!</td></tr>';
+}
+async function playMacro(name){
+  const row=document.querySelector(`.mspeed[data-n="${name}"]`)?.closest('tr');
+  const speed=row?.querySelector('.mspeed')?.value||1;
+  const loop=row?.querySelector('.mloop')?.value||1;
+  try{addJob(await api('/api/macros/play','POST',{name,speed:Number(speed),loop:Number(loop)}))}catch(e){}
+}
+async function delMacro(name){
+  if(!confirm(`ماکرو «${name}» حذف شود؟`))return;
+  try{await api('/api/macros/delete','POST',{name});toast('حذف شد');refreshState()}catch(e){}
+}
+
+/* ============================================================ system */
+let shotMode='click';
+$$('#shotModes .mode').forEach(m=>m.onclick=()=>{
+  $$('#shotModes .mode').forEach(x=>x.classList.remove('on'));m.classList.add('on');shotMode=m.dataset.m;});
+$('#shot').addEventListener('mousemove',e=>{
+  const c=shotCoords(e);$('#shotCoords').textContent=`x: ${c.x}  y: ${c.y}`;});
+$('#shot').addEventListener('click',e=>{
+  const c=shotCoords(e);
+  api('/api/system/mouse','POST',{action:shotMode,x:c.x,y:c.y}).catch(()=>{});});
+function shotCoords(e){
+  const img=$('#shot'),r=img.getBoundingClientRect();
+  const sx=(img.naturalWidth||1)/r.width, sy=(img.naturalHeight||1)/r.height;
+  return {x:Math.round((e.clientX-r.left)*sx), y:Math.round((e.clientY-r.top)*sy)};
+}
+async function refreshShot(){
+  try{
+    const r=await api('/api/system/screenshot','POST',{});
+    $('#shot').src='data:image/jpeg;base64,'+r.image;
+  }catch(e){}
+}
+setInterval(()=>{if($('#autoShot').checked&&CURRENT_VIEW==='system'&&!DEMO)refreshShot()},2500);
+async function shotNow(){
+  try{
+    const r=await api('/api/system/screenshot','POST',{});
+    showModal(`<h2>📸 اسکرین‌شات صفحه</h2><p class="small dim mono" style="margin:6px 0 10px">${esc(r.path)} — ${r.width}×${r.height}</p><img src="data:image/jpeg;base64,${r.image}">`);
+  }catch(e){}
+}
+async function sendText(){
+  const t=$('#typeText').value;if(!t){toast('متنی بنویس','warn');return}
+  try{
+    await api('/api/system/keyboard','POST',{action:'type',text:t});
+    if($('#typeEnter').checked)await api('/api/system/keyboard','POST',{action:'press',key:'enter'});
+    $('#typeText').value='';toast('تایپ شد ✓');
+  }catch(e){}
+}
+async function pressKey(k){try{await api('/api/system/keyboard','POST',{action:'press',key:k})}catch(e){}}
+async function hotkey(keys){try{await api('/api/system/keyboard','POST',{action:'hotkey',keys})}catch(e){}}
+async function customHotkey(){
+  const v=$('#customHot').value.trim();if(!v)return;
+  hotkey(v.split('+').map(s=>s.trim().toLowerCase()).filter(Boolean));
+}
+async function scrollBy(n){try{await api('/api/system/mouse','POST',{action:'scroll',clicks:n})}catch(e){}}
+async function sysinfo(){
+  try{const r=await api('/api/system/info');
+    const rows=[['نام سیستم',r.computer],['سیستم‌عامل',r.os],['پردازنده',r.processor],
+      ['هستهٔ CPU',faN(r.cpu_cores)],['مصرف CPU',r.cpu_percent!=null?faN(r.cpu_percent)+'٪':'—'],
+      ['حافظهٔ RAM',r.ram_total_gb?`${faN(r.ram_used_gb)} / ${faN(r.ram_total_gb)} گیگ (${faN(r.ram_percent)}٪)`:'—'],
+      ['دیسک',r.disk_total_gb?`${faN(r.disk_free_gb)} آزاد از ${faN(r.disk_total_gb)} گیگ`:'—'],
+      ['پایتون',r.python]];
+    $('#sysInfoBox').innerHTML=rows.map(([k,v])=>`<span class="k">${esc(k)}</span><span>${esc(String(v??'—'))}</span>`).join('');
+  }catch(e){}
+}
+async function openApp(){
+  const t=$('#openTarget').value.trim();if(!t){toast('مسیر یا آدرس بده','warn');return}
+  try{await api('/api/system/open','POST',{target:t});toast('باز شد ✓')}catch(e){}
+}
+async function runCmd(){
+  const c=$('#cmdIn').value.trim();if(!c)return;
+  try{const r=await api('/api/system/cmd','POST',{cmd:c});
+    $('#cmdOut').textContent=(`$ ${c}\n[exit ${r.code}]\n`+(r.output||'(بدون خروجی)'));}
+  catch(e){$('#cmdOut').textContent='خطا: '+e.message}
+}
+async function notifyWin(){
+  const m=$('#ntMsg').value.trim();if(!m){toast('متن اعلان خالی است','warn');return}
+  try{await api('/api/system/notify','POST',{title:$('#ntTitle').value.trim()||'ParsAgent',message:m});toast('اعلان ارسال شد ✓')}catch(e){}
+}
+async function lockNow(){if(confirm('صفحه قفل شود؟'))try{await api('/api/system/lock','POST',{})}catch(e){}}
+async function shutdownSys(){
+  const m=parseInt($('#shutMin').value)||60;
+  if(!confirm(`سیستم تا ${m} دقیقهٔ دیگر خاموش شود؟`))return;
+  try{await api('/api/system/shutdown','POST',{delay_min:m});toast(`خاموشی تا ${faN(m)} دقیقه زمان‌بندی شد`,'warn')}catch(e){}
+}
+async function abortShutdown(){try{await api('/api/system/abort_shutdown','POST',{});toast('خاموشی لغو شد ✓')}catch(e){}}
+
+/* ============================================================ settings */
+const DEFAULT_CONFIG=JSON.stringify({
+  browser:{headless:false,user_data_dir:"data/profiles/main",user_agent:null,proxy:null,
+    slow_mo_ms:0,viewport:null,channel:null,channel_fallbacks:["msedge","chrome","chromium"]},
+  stealth:{enabled:true,level:"standard",modules:{
+      webdriver:true,chrome_runtime:true,permissions:true,plugins:true,
+      languages_platform:true,hw_specs:true,canvas_noise:true,audio_noise:true,
+      webgl_mask:true,webrtc_shield:false},disable_for:[]},
+  captcha:{provider:"2captcha",api_key:"",auto_solve:true,timeout_s:180,poll_interval_s:5},
+  human:{enabled:true,min_delay_s:0.35,max_delay_s:1.4,typing_delay_ms:[35,95]},
+  platforms:{},scheduler:{max_concurrent:1},
+  gateway:{enabled:false,url:"ws://127.0.0.1:3030",token:"change-me"}
+},null,2);
+
+/* ---------- 🛡️ ضد شناسایی ---------- */
+const ST_MODULES=[
+  ['webdriver','حذف navigator.webdriver','قوی‌ترین نشانهٔ اتوماسیون — به‌همراه پرچم AutomationControlled'],
+  ['chrome_runtime','اشیای chrome.runtime / app','سایت‌ها نبودِ window.chrome را چک می‌کنند'],
+  ['permissions','Permissions API سازگار','پرس‌وجوی Notification مثل مرورگر واقعی'],
+  ['plugins','پلاگین‌های واقعی (PDF Viewer)','هدلس ۰ پلاگین دارد — اینستا/فیسبوک می‌سنجند'],
+  ['languages_platform','زبان و پلتفرم سیستم','fa-IR + Win32 به‌جای مقادیر ناسازگار'],
+  ['hw_specs','مشخصات سخت‌افزار واقع‌نما','هستهٔ CPU و deviceMemory'],
+  ['canvas_noise','نویز اثر انگشت Canvas','امضای یکتا و پایدار برای هر پروفایل'],
+  ['audio_noise','نویز AudioContext','اثر انگشت صوتی نامحسوس'],
+  ['webgl_mask','ماسک GPU در WebGL','رندرر ANGLE واقع‌نما به‌جای SwiftShader'],
+  ['webrtc_shield','غیرفعال‌سازی WebRTC','ضد نشت IP هنگام پروکسی — بدون پروکسی لازم نیست'],
+];
+const ST_LEVELS={
+  basic:['webdriver','chrome_runtime','permissions'],
+  standard:['webdriver','chrome_runtime','permissions','plugins','languages_platform',
+           'hw_specs','canvas_noise','audio_noise','webgl_mask'],
+  max:ST_MODULES.map(m=>m[0]),
+};
+let SETTINGS_LOADED=false, CUR_CRED='instagram';
+const CRED_META={
+  instagram:{title:'اینستاگرام',hint:'نام کاربری/ایمیل/شماره + رمز. اگر 2FA داری، کلید TOTP را هم بده تا خودش کد بسازد.',
+    fields:[['username','نام کاربری / ایمیل / شماره'],['password','رمز عبور','pw'],['totp_secret','کلید 2FA (اختیاری)','pw']]},
+  twitter:{title:'توییتر (X)',hint:'نام کاربری + رمز + کلید 2FA اختیاری.',
+    fields:[['username','نام کاربری / ایمیل / شماره'],['password','رمز عبور','pw'],['totp_secret','کلید 2FA (اختیاری)','pw']]},
+  facebook:{title:'فیسبوک',hint:'ایمیل یا شماره موبایل + رمز.',
+    fields:[['username','ایمیل یا شماره موبایل'],['password','رمز عبور','pw'],['totp_secret','کلید 2FA (اختیاری)','pw']]},
+  linkedin:{title:'لینکدین',hint:'ایمیل + رمز.',
+    fields:[['username','ایمیل یا شماره'],['password','رمز عبور','pw'],['totp_secret','کلید 2FA (اختیاری)','pw']]},
+  telegram:{title:'تلگرام',hint:'شماره موبایل با + و کشور (مثل +98912…) — کد SMS را در پنجرهٔ باز وارد می‌کنی.',
+    fields:[['username','شماره موبایل (مثل +98912…)'],['password','رمز ابری (اختیاری)','pw']]},
+  bale:{title:'بله',hint:'شماره موبایل — کد تأیید را در پنجرهٔ باز وارد می‌کنی.',
+    fields:[['username','شماره موبایل']]},
+  rubika:{title:'روبیکا',hint:'شماره موبایل — کد تأیید را در پنجرهٔ باز وارد می‌کنی.',
+    fields:[['username','شماره موبایل']]},
+  eitaa:{title:'ایتا',hint:'شماره موبایل — کد تأیید را در پنجرهٔ باز وارد می‌کنی.',
+    fields:[['username','شماره موبایل']]},
+};
+
+function renderStMods(mods){
+  $('#stMods').innerHTML=ST_MODULES.map(([k,t,d])=>`
+   <div class="modrow">
+     <label class="sw"><input type="checkbox" data-k="${k}" ${mods&&mods[k]?'checked':''}><i></i></label>
+     <div class="mtxt"><b>${t}</b><span>${d}</span></div>
+   </div>`).join('');
+}
+function applyStLevel(l){
+  const on=ST_LEVELS[l]||ST_LEVELS.standard;
+  $$('#stMods input[data-k]').forEach(i=>i.checked=on.includes(i.dataset.k));
+  $$('#stLevels .mode').forEach(m=>m.classList.toggle('on',m.dataset.l===l));
+}
+function collectStealth(){
+  const mods={};
+  $$('#stMods input[data-k]').forEach(i=>mods[i.dataset.k]=i.checked);
+  return {enabled:$('#stEnabled').checked,level:$('#stLevels .mode.on')?.dataset.l||'standard',
+          modules:mods,disable_for:[]};
+}
+async function saveStealth(){
+  const stealth=collectStealth();
+  try{
+    const r=await api('/api/config');
+    let cfg;try{cfg=JSON.parse(r.content)}catch(e){toast('config.json فعلی JSON نامعتبر است — اول درستش کن','err');return}
+    cfg.stealth=stealth;
+    const content=JSON.stringify(cfg,null,2);
+    $('#cfgEditor').value=content;
+    await api('/api/config/save','POST',{content});
+    toast('تنظیمات ضد شناسایی ذخیره شد ✓ — مرورگرهای باز را ری‌استارت کن');
+  }catch(e){}
+}
+async function stealthProbe(){
+  const pid=$('#stProbePlat').value||'instagram';
+  $('#probeBox').style.display='block';
+  $('#probeBox').innerHTML='<div class="checkrow"><span class="spin"></span><span>در حال تست…</span></div>';
+  try{
+    const j=await api('/api/stealth/probe','POST',{platform:pid});
+    const poll=setInterval(async()=>{
+      try{const d=await api('/api/jobs/'+j.id);
+        if(d.status!=='running'){clearInterval(poll);renderProbe(d)}}catch(e){clearInterval(poll)}},700);
+  }catch(e){$('#probeBox').innerHTML=''}
+}
+function renderProbe(d){
+  const box=$('#probeBox');
+  if(d.status==='failed'){box.innerHTML=`<div class="checkrow"><span class="bad">✗</span><span style="flex:1">${esc(d.error||'خطا در تست')}</span></div>`;return}
+  const r=d.result||{};
+  const rows=(r.checks||[]).map(c=>`
+    <div class="checkrow">
+      <span class="${c.pass?'ok':'bad'}">${c.pass?'✓':'✗'}</span>
+      <span style="flex:1">${esc(c.label)}</span>
+      <span class="mono small dim" style="max-width:44%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:ltr">${esc(c.actual||'')}</span>
+    </div>`).join('');
+  box.innerHTML=`<h2 style="font-size:14px">🧪 تست اثر انگشت — ${faN(r.passed||0)} از ${faN(r.total||0)} سالم</h2>
+    <div class="grid" style="gap:6px;margin-top:8px">${rows}</div>`;
+}
+async function openBotTest(){
+  const pid=$('#stProbePlat').value||'instagram';
+  try{addJob(await api('/api/stealth/test','POST',{platform:pid}))}catch(e){}
+}
+
+/* ---------- 🔑 حساب‌ها و ورود خودکار ---------- */
+async function loadSettings(){
+  if(DEMO){                                  // پیش‌نمایش: پیش‌فرض‌ها بدون سرور
+    renderStMods({});applyStLevel('standard');fillProbePlats();selectCred(CUR_CRED);
+    return;
+  }
+  try{const r=await api('/api/config');
+    let cfg={};try{cfg=JSON.parse(r.content)||{}}catch(e){}
+    $('#cfgEditor').value=r.content;
+    const st=cfg.stealth||{};
+    $('#stEnabled').checked=st.enabled!==false;
+    renderStMods(st.modules||{});
+    const lvl=st.level||'standard';
+    $$('#stLevels .mode').forEach(m=>m.classList.toggle('on',m.dataset.l===lvl));
+    const cap=cfg.captcha||{};
+    $('#capProvider').value=cap.provider||'2captcha';
+    $('#capKey').value=cap.api_key||'';
+    $('#capAuto').checked=cap.auto_solve!==false;
+  }catch(e){}
+  await loadCreds();
+  fillProbePlats();
+}
+function fillProbePlats(){
+  const opts=platforms().map(p=>`<option value="${p.id}">${esc(p.fa)}</option>`).join('');
+  $('#stProbePlat').innerHTML=opts||'<option value="instagram">اینستاگرام</option>';
+}
+async function loadCreds(){
+  let data={platforms:{}};
+  if(!DEMO){try{data=await api('/api/credentials')}catch(e){data={platforms:{}}}}
+  renderCredChips(data.platforms||{});
+  selectCred(CUR_CRED,data.platforms||{});
+}
+function renderCredChips(pl){
+  $('#credPlats').innerHTML=Object.keys(CRED_META).map(pid=>{
+    const c=pl[pid]||{};
+    const meta=platforms().find(x=>x.id===pid);
+    const icon=c.has_password?'🔒':(c.username?'🔑':'＋');
+    return `<span class="chipcred ${pid===CUR_CRED?'on':''}" onclick="selectCred('${pid}')">
+      ${icon} ${esc(meta?meta.fa:CRED_META[pid].title)}${c.username?` <span class="small dim">${esc(String(c.username).slice(0,14))}</span>`:''}</span>`;
+  }).join('');
+}
+function selectCred(pid){
+  CUR_CRED=pid;
+  const m=CRED_META[pid];if(!m)return;
+  let rec=(STATE&&STATE.credentials&&STATE.credentials[pid])||{};
+  if(DEMO)rec={username:'',has_password:false};
+  $('#credTitle').textContent='🔑 '+m.title;
+  $('#credHint').textContent=m.hint;
+  $('#credFields').innerHTML=m.fields.map(([k,label,typ])=>`
+    <label class="f">${label}${k==='totp_secret'?' — از اپ Google Authenticator (تنظیمات ← Export)':''}</label>
+    <input type="${typ==='pw'?'password':'text'}" id="cred-${k}" autocomplete="off"
+      value="${k==='username'?esc(rec.username||''):''}"
+      placeholder="${k==='password'?(rec.has_password?'•••••••• (ذخیره شده — خالی = پاک‌کردن)':'رمز عبور'):(k==='totp_secret'?(rec.has_totp?'•••••••• (ذخیره شده — خالی = پاک‌کردن)':'اختیاری'):m.fields[0][1])}">`).join('');
+  const pl=(STATE&&STATE.credentials)||{};
+  renderCredChips(DEMO?{}:pl);
+}
+async function saveCred(){
+  const pid=CUR_CRED;
+  const body={platform:pid};
+  CRED_META[pid].fields.forEach(([k])=>{const el=$('#cred-'+k);if(el)body[k]=el.value});
+  if(!String(body.username||'').trim()&&!String(body.password||'').trim()&&!String(body.totp_secret||'').trim()){
+    toast('حداقل یک فیلد را پر کن','warn');return}
+  try{
+    await api('/api/credentials','POST',body);
+    toast('حساب ذخیره شد ✓ — حالا از تب پلتفرم‌ها «⚡ ورود خودکار» را بزن');
+    CRED_META[pid].fields.forEach(([k])=>{const el=$('#cred-'+k);if(el&&k!=='username')el.value=''});
+    try{STATE.credentials=(await api('/api/credentials')).platforms}catch(e){}
+    selectCred(pid);renderPlatforms();
+  }catch(e){}
+}
+async function clearCred(){
+  if(!confirm(`حساب ${CRED_META[CUR_CRED].title} پاک شود؟`))return;
+  try{
+    await api('/api/credentials/delete','POST',{platform:CUR_CRED});
+    toast('پاک شد');
+    try{STATE.credentials=(await api('/api/credentials')).platforms}catch(e){}
+    selectCred(CUR_CRED);renderPlatforms();
+  }catch(e){}
+}
+async function saveCaptcha(){
+  try{
+    const r=await api('/api/config');
+    let cfg;try{cfg=JSON.parse(r.content)}catch(e){toast('config.json فعلی JSON نامعتبر است','err');return}
+    cfg.captcha=Object.assign(cfg.captcha||{},{
+      provider:$('#capProvider').value,
+      api_key:$('#capKey').value.trim(),
+      auto_solve:$('#capAuto').checked});
+    const content=JSON.stringify(cfg,null,2);
+    $('#cfgEditor').value=content;
+    await api('/api/config/save','POST',{content});
+    toast($('#capKey').value.trim()?'تنظیمات کپچا ذخیره شد ✓':'تنظیمات کپچا ذخیره شد (بدون کلید)');
+  }catch(e){}
+}
+async function autoLogin(pid){
+  const hasCreds=STATE&&STATE.credentials&&STATE.credentials[pid]&&
+    (STATE.credentials[pid].username||STATE.credentials[pid].has_password);
+  if(!DEMO&&!hasCreds){
+    toast('اول از «تنظیمات ← حساب‌ها» مشخصات ورود را ذخیره کن','warn');
+    go('settings');return;
+  }
+  try{
+    addJob(await api('/api/platform/login','POST',{platform:pid}));
+    toast('ورود خودکار شروع شد — مرورگر باز می‌شود','info');
+  }catch(e){}
+}
+
+async function loadConfig(){
+  try{const r=await api('/api/config');$('#cfgEditor').value=r.content;}
+  catch(e){}
+}
+async function saveConfig(){
+  try{await api('/api/config/save','POST',{content:$('#cfgEditor').value});toast('ذخیره شد ✓ (برای اعمال کامل، سرور را ری‌استارت کن)')}catch(e){}
+}
+function resetConfig(){$('#cfgEditor').value=DEFAULT_CONFIG;toast('پیش‌فرض بازیابی شد — برای ثبت، ذخیره را بزن','info')}
+$$('#stLevels .mode').forEach(m=>m.onclick=()=>applyStLevel(m.dataset.l));
+$('#stEnabled').addEventListener('change',()=>{
+  $('#stMods').style.opacity=$('#stEnabled').checked?'1':'.4';
+  $$('#stMods input').forEach(i=>i.disabled=!$('#stEnabled').checked);
+});
+
+/* ============================================================ state & boot */
+async function refreshState(){
+  try{
+    STATE=await api('/api/state');
+    renderPlatforms();renderTaskFiles();renderMacros();renderJobs();
+    const b=STATE.browser;
+    $('#stSrv').innerHTML='<span style="color:var(--acc2)">روشن ✓</span>';
+    if($('#stProf'))$('#stProf').textContent=faN(b?b.profiles.length:0);
+    const mods=STATE.modules||{};
+    $('#modChips').innerHTML=Object.entries(mods).map(([k,v])=>
+      `<span class="tag ${v?'ok':'err'}">${esc(k)} ${v?'✓':'✗'}</span>`).join('');
+    $('#sysMini').textContent=(b&&b.channel)?`کانال مرورگر برنده: ${b.channel}`:'';
+    $('#ftSrv').textContent=`سرور: روشن · ${faN(b?b.profiles.length:0)} پروفایل مرورگر`;
+  }catch(e){
+    if(!DEMO)setDemo();
+  }
+}
+function setDemo(){
+  DEMO=true;
+  $('#demobanner').classList.add('show');
+  $('#wsDot').className='dot err';$('#wsTxt').textContent='آفلاین (پیش‌نمایش)';
+  $('#stSrv').innerHTML='<span style="color:var(--warn)">پیش‌نمایش</span>';
+  $('#stProf').textContent='—';$('#stJobs').textContent='—';$('#stRec').textContent='—';
+  STATE={platforms:FALLBACK_PLATFORMS,task_files:[],macros:[],jobs:[],browser:null,modules:{}};
+  renderPlatforms();renderTaskFiles();renderMacros();
+  $('#modChips').innerHTML='<span class="tag warn">سرور متصل نیست</span>';
+  $('#ftSrv').textContent='حالت پیش‌نمایش';
+}
+async function boot(){
+  try{await api('/api/health')}catch(e){setDemo()}
+  if(!DEMO){connectWS();refreshState();setInterval(refreshState,4000);}
+  renderMini();renderLogs();
+}
+boot();
+</script>
+</body>
+</html>

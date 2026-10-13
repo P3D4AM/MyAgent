@@ -1,0 +1,1002 @@
+     1→     1→# -*- coding: utf-8 -*-
+     2→     2→"""
+     3→     3→ParsAgent — پنل مدیریت محلی (بک‌اند)
+     4→     4→اجرا:  python panel_server.py
+     5→     5→نیازمندی‌ها:  pip install fastapi uvicorn python-multipart playwright
+     6→     6→
+     7→     7→تغییرهای این نسخه:
+     8→     8→  - اجرای سریع: نتیجه از طریق state برگردانده می‌شود؛ فرم هرگز بازسازی خودکار نمی‌شود
+     9→     9→  - آپلود رسانه از سیستم (پوشه media) برای انتشار عکس/استوری/پست
+    10→    10→  - زمان‌بند کامل: هر X دقیقه / ساعت‌های مشخص روزانه / یک‌بار
+    11→    11→  - ضبط ماکرو فقط با دکمه «شروع ضبط» آغاز می‌شود — با بالا آمدن سرور شروع نمی‌شود
+    12→    12→  - تست بات + تنظیمات ضد شناسایی + ذخیره نام کاربری/رمز + حل کپچا
+    13→    13→  - ۲.۱.۰: لانچر — رفع گیرکردن روی «در حال راه‌اندازی سرور» (بررسی سلامت
+    14→    14→    بدون پروکسی/VPN + نمایش زندهٔ خطاهای سرور در لاگ لانچر)
+    15→    15→  - ۲.۲.۰: ضد شناسایی v3 «پیشرفته» بر اساس متد روز دنیا:
+    16→    16→    اثر انگشت پایدار per-profile (نویز تصادفیِ هر بار خودش پرچم قرمز است!)،
+    17→    17→    ۴ گروه تنظیم (هویت مرورگر / اثر انگشت دیجیتال / رفتار انسانی / هر پلتفرم)،
+    18→    18→    ماژول‌های جدید: window.chrome کامل، نویز پایدار Audio، ماسک فونت،
+    19→    19→    مشخصات سخت‌افزار واقع‌نما، شیلد WebRTC، کلاک native بودن توابع،
+    20→    20→    حرکت موس منحنی، اسکرول تصادفی، سرعت تایپ، مکث شبانه
+    21→    21→  - ۲.۲.۰: زمان‌بندی پخش ماکرو — پخش ماکروها هم مثل اکشن‌ها قابل
+    22→    22→    زمان‌بندی شد (تکرارشونده / روزانه / یک‌بار + مکث شبانه)
+    23→    23→"""
+    24→    24→from __future__ import annotations
+    25→    25→
+    26→    26→import asyncio
+    27→    27→import hashlib
+    28→    28→import json
+    29→    29→import os
+    30→    30→import random
+    31→    31→import re
+    32→    32→import time
+    33→    33→import urllib.parse
+    34→    34→import urllib.request
+    35→    35→import uuid
+    36→    36→from datetime import datetime, timedelta
+    37→    37→from pathlib import Path
+    38→    38→from typing import Any, Dict, List, Optional
+    39→    39→
+    40→    40→import uvicorn
+    41→    41→from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+    42→    42→from fastapi.responses import FileResponse, JSONResponse
+    43→    43→from fastapi.staticfiles import StaticFiles
+    44→    44→
+    45→    45→# ---------------------------------------------------------------- مسیرها
+    46→    46→BASE = Path(__file__).resolve().parent
+    47→    47→PORT = int(os.environ.get("PANEL_PORT", "8765"))
+    48→    48→MEDIA_DIR = BASE / "media"
+    49→    49→CONFIG_DIR = BASE / "config"
+    50→    50→MACROS_DIR = BASE / "macros"
+    51→    51→PROFILES_DIR = BASE / "profiles"
+    52→    52→STATIC_DIR = BASE / "static"
+    53→    53→for d in (MEDIA_DIR, CONFIG_DIR, MACROS_DIR, PROFILES_DIR, STATIC_DIR):
+    54→    54→    d.mkdir(parents=True, exist_ok=True)
+    55→    55→
+    56→    56→F_SETTINGS = CONFIG_DIR / "settings.json"
+    57→    57→F_CREDS = CONFIG_DIR / "credentials.json"
+    58→    58→F_SCHED = CONFIG_DIR / "schedules.json"
+    59→    59→
+    60→    60→# ---------------------------------------------------------------- پلتفرم‌ها
+    61→    61→PLATFORMS: List[Dict[str, str]] = [
+    62→    62→    {"id": "instagram", "name": "اینستاگرام", "icon": "📸", "url": "https://www.instagram.com"},
+    63→    63→    {"id": "twitter",   "name": "توییتر (X)",  "icon": "🐦", "url": "https://x.com"},
+    64→    64→    {"id": "telegram",  "name": "تلگرام",      "icon": "✈️", "url": "https://web.telegram.org"},
+    65→    65→    {"id": "facebook",  "name": "فیسبوک",      "icon": "📘", "url": "https://www.facebook.com"},
+    66→    66→    {"id": "linkedin",  "name": "لینکدین",     "icon": "💼", "url": "https://www.linkedin.com"},
+    67→    67→    {"id": "bale",      "name": "بله",         "icon": "💬", "url": "https://ble.ir"},
+    68→    68→    {"id": "rubika",    "name": "روبیکا",      "icon": "🟣", "url": "https://web.rubika.ir"},
+    69→    69→]
+    70→    70→PLAT_IDS = [p["id"] for p in PLATFORMS]
+    71→    71→
+    72→    72→LOGIN_URLS = {
+    73→    73→    "instagram": "https://www.instagram.com/accounts/login/",
+    74→    74→    "twitter": "https://x.com/i/flow/login",
+    75→    75→    "telegram": "https://web.telegram.org",
+    76→    76→    "facebook": "https://www.facebook.com/login",
+    77→    77→    "linkedin": "https://www.linkedin.com/login",
+    78→    78→    "bale": "https://ble.ir",
+    79→    79→    "rubika": "https://web.rubika.ir",
+    80→    80→}
+    81→    81→
+    82→    82→# (سلکتور نام کاربری، سلکتور رمز)
+    83→    83→LOGIN_FIELDS = {
+    84→    84→    "instagram": ("input[name='username']", "input[type='password']"),
+    85→    85→    "twitter": ("input[autocomplete='username']", "input[type='password']"),
+    86→    86→    "telegram": ("input[name='phone'], input[type='tel']", None),
+    87→    87→    "facebook": ("#email, input[name='email']", "#pass, input[type='password']"),
+    88→    88→    "linkedin": ("#username", "#password"),
+    89→    89→    "bale": ("input[type='tel'], input[name='phone'], input[inputmode='tel']", None),
+    90→    90→    "rubika": ("input[type='tel'], input[name='phone'], input[inputmode='tel']", None),
+    91→    91→}
+    92→    92→
+    93→    93→SUBMIT_HINTS = [
+    94→    94→    "button[type='submit']",
+    95→    95→    "button:has-text('ورود')", "button:has-text('Log in')", "button:has-text('Sign in')",
+    96→    96→    "div[role='button']:has-text('ورود')", "div[role='button']:has-text('Log in')",
+    97→    97→]
+    98→    98→
+    99→    99→FALLBACKS = ("msedge", "chrome", None)
+   100→   100→
+   101→   101→# ---------------------------------------------------------------- راهنمای طبیعی جلوه دادن
+   102→   102→GUIDE: Dict[str, Dict[str, Any]] = {
+   103→   103→    "instagram": {
+   104→   104→        "name": "اینستاگرام",
+   105→   105→        "rows": [("فالو در ساعت", "۲۰ تا ۳۰ نفر"), ("فالو در روز", "۱۵۰ تا ۲۰۰ نفر"),
+   106→   106→                 ("لایک در ساعت", "۶۰ تا ۱۰۰"), ("کامنت در روز", "۲۰ تا ۳۰"),
+   107→   107→                 ("پست عکس در روز", "۱ تا ۲"), ("استوری در روز", "تا ۱۰")],
+   108→   108→        "delay": (35, 120), "active": "۹ صبح تا ۱۱ شب",
+   109→   109→        "tips": ["برای حساب تازه، ۲ هفتهٔ اول فقط نصفِ محدودیت‌ها (گرم کردن حساب).",
+   110→   110→                 "بین هر اکشن فاصلهٔ تصادفی بگذارید؛ عدد ثابت = رفتار رباتیک.",
+   111→   111→                 "متن کامنت‌ها را تنوع بدهید؛ کامنت تکراری علامت اسپم است.",
+   112→   112→                 "هر روز چند دقیقه تعامل دستی و طبیعی هم داشته باشید."],
+   113→   113→    },
+   114→   114→    "twitter": {
+   115→   115→        "name": "توییتر (X)",
+   116→   116→        "rows": [("فالو در ساعت", "۱۵ تا ۲۰ نفر"), ("فالو در روز", "تا ۱۰۰ نفر"),
+   117→   117→                 ("توییت در روز", "۲۰ تا ۵۰"), ("لایک در روز", "۳۰۰ تا ۵۰۰")],
+   118→   118→        "delay": (30, 90), "active": "۱۰ صبح تا ۱۲ شب",
+   119→   119→        "tips": ["توییت‌ها را با فاصلهٔ چند ساعتی منتشر کنید نه پشت‌سرهم.",
+   120→   120→                 "ریتوییت و لایک را با توییت دستی خودتان ترکیب کنید.",
+   121→   121→                 "اکانت تازه: هفتهٔ اول حداکثر ۱۰ فالو در روز."],
+   122→   122→    },
+   123→   123→    "telegram": {
+   124→   124→        "name": "تلگرام",
+   125→   125→        "rows": [("پیام به افراد ناشناس", "با احتیاط — ریسک ریپورت"), ("عضویت در کانال در روز", "۱۰ تا ۱۵")],
+   126→   126→        "delay": (45, 120), "active": "۱۰ صبح تا ۱۱ شب",
+   127→   127→        "tips": ["برای ارسال گروهی حتماً تأخیر طولانی بگذارید؛ تلگرام در پیام‌های سریع محدود می‌کند.",
+   128→   128→                 "کد ورود تلگرام وب را از اپ موبایل خود تأیید کنید."],
+   129→   129→    },
+   130→   130→    "facebook": {
+   131→   131→        "name": "فیسبوک",
+   132→   132→        "rows": [("درخواست دوستی در روز", "۱۰ تا ۱۵"), ("کامنت در روز", "۲۰ تا ۳۰"), ("پست در روز", "۱ تا ۳")],
+   133→   133→        "delay": (40, 120), "active": "۹ صبح تا ۱۱ شب",
+   134→   134→        "tips": ["فیسبوک نسبت به دوستی‌های سریع حساس است؛ تعداد را کم نگه دارید.",
+   135→   135→                 "قبل از اتوماسیون، اکانت باید حداقل چند ماه فعالیت دستی داشته باشد."],
+   136→   136→    },
+   137→   137→    "linkedin": {
+   138→   138→        "name": "لینکدین",
+   139→   139→        "rows": [("درخواست اتصال در روز", "۱۵ تا ۲۰"), ("اتصال در هفته", "حداکثر ۸۰ تا ۱۰۰"), ("پست در هفته", "۲ تا ۵")],
+   140→   140→        "delay": (60, 180), "active": "۸ صبح تا ۶ عصر (روزهای کاری)",
+   141→   141→        "tips": ["لینکدین خارج از ساعت کاری فعالیت زیاد را عجیب می‌بیند.",
+   142→   142→                 "همیشه هنگام اتصال، یادداشت شخصی اضافه کنید.",
+   143→   143→                 "آخر هفته (پنجشنبه/جمعه ایرانی) کمتر فعالیت کنید."],
+   144→   144→    },
+   145→   145→    "bale": {
+   146→   146→        "name": "بله",
+   147→   147→        "rows": [("پیام در روز", "۵۰ تا ۸۰"), ("عضویت در کانال در روز", "۱۰ تا ۱۵")],
+   148→   148→        "delay": (30, 90), "active": "۹ صبح تا ۱۱ شب",
+   149→   149→        "tips": ["برای ارسال به کاربران ناشناس، فاصلهٔ طولانی بگذارید.",
+   150→   150→                 "ترکیب پیام‌های یکسان گروهی، ریسک محدودیت را بالا می‌برد."],
+   151→   151→    },
+   152→   152→    "rubika": {
+   153→   153→        "name": "روبیکا",
+   154→   154→        "rows": [("پیام در روز", "۵۰ تا ۸۰"), ("عضویت در کانال در روز", "۱۰ تا ۱۵")],
+   155→   155→        "delay": (30, 90), "active": "۹ صبح تا ۱۱ شب",
+   156→   156→        "tips": ["مثل هر پیام‌رسان، ارسال انبوه بدون فاصله باعث محدودیت می‌شود.",
+   157→   157→                 "برای کانال‌های عمومی، عضویت‌ها را در طول روز پخش کنید."],
+   158→   158→    },
+   159→   159→}
+   160→   160→
+   161→   161→# فاصلهٔ ایمن بین زیر-اکشن‌ها بر اساس نوع اکشن (ثانیه)
+   162→   162→SAFE_DELAY = {
+   163→   163→    "follow": (35, 120), "friend_request": (45, 150), "connect": (60, 180),
+   164→   164→    "like": (20, 60), "comment": (60, 180), "retweet": (60, 180),
+   165→   165→    "send_message": (45, 120), "join_channel": (60, 180),
+   166→   166→    "post_photo": (120, 300), "post_story": (120, 300), "tweet": (180, 420), "post": (180, 420),
+   167→   167→}
+   168→   168→
+   169→   169→# ---------------------------------------------------------------- اکشن‌ها (برای فرانت‌اند)
+   170→   170→ACTIONS: Dict[str, List[Dict[str, Any]]] = {
+   171→   171→    "instagram": [
+   172→   172→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   173→   173→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   174→   174→        {"id": "follow", "name": "فالو کردن", "params": [
+   175→   175→            {"key": "target", "name": "کاربر یا هشتگ (مثل hashtag:عکس) — چند مورد با ویرگول", "type": "text"},
+   176→   176→            {"key": "count", "name": "تعداد", "type": "number", "default": 1}]},
+   177→   177→        {"id": "like", "name": "لایک پست‌های فید", "params": [
+   178→   178→            {"key": "count", "name": "تعداد لایک", "type": "number", "default": 5}]},
+   179→   179→        {"id": "comment", "name": "کامنت گذاشتن", "params": [
+   180→   180→            {"key": "target", "name": "نام کاربری صاحب پست", "type": "text"},
+   181→   181→            {"key": "text", "name": "متن کامنت", "type": "textarea"},
+   182→   182→            {"key": "count", "name": "تعداد کامنت (روی پست‌های اخیر)", "type": "number", "default": 1}]},
+   183→   183→        {"id": "post_photo", "name": "انتشار عکس (پست)", "params": [
+   184→   184→            {"key": "media", "name": "فایل رسانه", "type": "media"},
+   185→   185→            {"key": "text", "name": "کپشن", "type": "textarea"}]},
+   186→   186→        {"id": "post_story", "name": "انتشار استوری", "params": [
+   187→   187→            {"key": "media", "name": "فایل رسانه", "type": "media"}]},
+   188→   188→        {"id": "search", "name": "جستجو", "params": [{"key": "query", "name": "عبارت", "type": "text"}]},
+   189→   189→    ],
+   190→   190→    "twitter": [
+   191→   191→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   192→   192→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   193→   193→        {"id": "follow", "name": "فالو کردن", "params": [
+   194→   194→            {"key": "target", "name": "نام کاربری (ها) با ویرگول", "type": "text"},
+   195→   195→            {"key": "count", "name": "تعداد", "type": "number", "default": 1}]},
+   196→   196→        {"id": "like", "name": "لایک توییت‌های فید", "params": [
+   197→   197→            {"key": "count", "name": "تعداد", "type": "number", "default": 5}]},
+   198→   198→        {"id": "tweet", "name": "انتشار توییت", "params": [
+   199→   199→            {"key": "media", "name": "فایل رسانه (اختیاری)", "type": "media"},
+   200→   200→            {"key": "text", "name": "متن توییت", "type": "textarea"}]},
+   201→   201→        {"id": "retweet", "name": "ریتوییت", "params": [
+   202→   202→            {"key": "target", "name": "لینک توییت", "type": "text"}]},
+   203→   203→        {"id": "search", "name": "جستجو", "params": [{"key": "query", "name": "عبارت", "type": "text"}]},
+   204→   204→    ],
+   205→   205→    "telegram": [
+   206→   206→        {"id": "open", "name": "باز کردن تلگرام وب", "params": []},
+   207→   207→        {"id": "login", "name": "ورود (شماره تلفن خودکار)", "params": []},
+   208→   208→        {"id": "join_channel", "name": "عضویت در کانال", "params": [
+   209→   209→            {"key": "target", "name": "آدرس یا نام کانال", "type": "text"}]},
+   210→   210→        {"id": "send_message", "name": "ارسال پیام", "params": [
+   211→   211→            {"key": "target", "name": "نام کاربری یا کانال", "type": "text"},
+   212→   212→            {"key": "text", "name": "متن پیام", "type": "textarea"}]},
+   213→   213→        {"id": "search", "name": "جستجوی جهانی", "params": [{"key": "query", "name": "عبارت", "type": "text"}]},
+   214→   214→    ],
+   215→   215→    "facebook": [
+   216→   216→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   217→   217→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   218→   218→        {"id": "friend_request", "name": "درخواست دوستی", "params": [
+   219→   219→            {"key": "target", "name": "لینک پروفایل یا نام", "type": "text"},
+   220→   220→            {"key": "count", "name": "تعداد (برای جستجو)", "type": "number", "default": 1}]},
+   221→   221→        {"id": "like", "name": "لایک پست‌های فید", "params": [
+   222→   222→            {"key": "count", "name": "تعداد", "type": "number", "default": 5}]},
+   223→   223→        {"id": "comment", "name": "کامنت گذاشتن", "params": [
+   224→   224→            {"key": "target", "name": "لینک پست", "type": "text"},
+   225→   225→            {"key": "text", "name": "متن کامنت", "type": "textarea"}]},
+   226→   226→        {"id": "post_photo", "name": "انتشار عکس (پست)", "params": [
+   227→   227→            {"key": "media", "name": "فایل رسانه", "type": "media"},
+   228→   228→            {"key": "text", "name": "متن پست", "type": "textarea"}]},
+   229→   229→    ],
+   230→   230→    "linkedin": [
+   231→   231→        {"id": "open", "name": "باز کردن سایت", "params": []},
+   232→   232→        {"id": "login", "name": "ورود (تکمیل خودکار نام/رمز)", "params": []},
+   233→   233→        {"id": "connect", "name": "درخواست اتصال", "params": [
+   234→   234→            {"key": "target", "name": "لینک پروفایل یا نام", "type": "text"},
+   235→   235→            {"key": "count", "name": "تعداد (برای جستجو)", "type": "number", "default": 1}]},
+   236→   236→        {"id": "like", "name": "لایک پست‌های فید", "params": [
+   237→   237→            {"key": "count", "name": "تعداد", "type": "number", "default": 5}]},
+   238→   238→        {"id": "comment", "name": "کامنت گذاشتن", "params": [
+   239→   239→            {"key": "target", "name": "لینک پست", "type": "text"},
+   240→   240→            {"key": "text", "name": "متن کامنت", "type": "textarea"}]},
+   241→   241→        {"id": "post", "name": "انتشار پست", "params": [
+   242→   242→            {"key": "media", "name": "فایل رسانه (اختیاری)", "type": "media"},
+   243→   243→            {"key": "text", "name": "متن پست", "type": "textarea"}]},
+   244→   244→    ],
+   245→   245→    "bale": [
+   246→   246→        {"id": "open", "name": "باز کردن بله", "params": []},
+   247→   247→        {"id": "login", "name": "ورود (شماره تلفن خودکار)", "params": []},
+   248→   248→        {"id": "join_channel", "name": "عضویت در کانال", "params": [
+   249→   249→            {"key": "target", "name": "نام کانال", "type": "text"}]},
+   250→   250→        {"id": "send_message", "name": "ارسال پیام", "params": [
+   251→   251→            {"key": "target", "name": "نام کاربری یا کانال", "type": "text"},
+   252→   252→            {"key": "text", "name": "متن پیام", "type": "textarea"}]},
+   253→   253→    ],
+   254→   254→    "rubika": [
+   255→   255→        {"id": "open", "name": "باز کردن روبیکا", "params": []},
+   256→   256→        {"id": "login", "name": "ورود (شماره تلفن خودکار)", "params": []},
+   257→   257→        {"id": "join_channel", "name": "عضویت در کانال", "params": [
+   258→   258→            {"key": "target", "name": "نام کانال", "type": "text"}]},
+   259→   259→        {"id": "send_message", "name": "ارسال پیام", "params": [
+   260→   260→            {"key": "target", "name": "نام کاربری یا کانال", "type": "text"},
+   261→   261→            {"key": "text", "name": "متن پیام", "type": "textarea"}]},
+   262→   262→    ],
+   263→   263→}
+   264→   264→
+   265→   265→DEFAULT_SETTINGS: Dict[str, Any] = {
+   266→   266→    "general": {"headless": False, "channel": "auto", "proxy": "", "start_maximized": True},
+   267→   267→    "stealth": {
+   268→   268→        "enabled": True,
+   269→   269→        "level": "standard",
+   270→   270→        # —— گروه ۱: هویت مرورگر
+   271→   271→        "hide_webdriver": True, "spoof_languages": True, "plugins_mimic": True,
+   272→   272→        "chrome_runtime": True, "permissions_fix": True, "ua_fix": True,
+   273→   273→        "spoof_ua": False, "user_agent": "",
+   274→   274→        # —— گروه ۲: اثر انگشت دیجیتال
+   275→   275→        "webgl_mask": True, "canvas_noise": True, "audio_noise": True,
+   276→   276→        "font_mask": True, "hardware_specs": True, "webrtc_shield": False,
+   277→   277→        # —— گروه ۳: رفتار انسانی
+   278→   278→        "human_typing": True, "human_delays": True, "typing_speed": "human",
+   279→   279→        "mouse_curves": True, "random_scrolls": True, "page_dwell": True,
+   280→   280→        "night_pause": True,
+   281→   281→        "per_platform": {pid: True for pid in PLAT_IDS},
+   282→   282→    },
+   283→   283→    "auto_fill": True,
+   284→   284→    "captcha": {"mode": "notify", "provider": "2captcha", "api_key": "", "manual_wait_seconds": 180},
+   285→   285→}
+   286→   286→
+   287→   287→# ---------------------------------------------------------------- ابزار فایل/حالت
+   288→   288→def load_json(path: Path, default: Any) -> Any:
+   289→   289→    try:
+   290→   290→        return json.loads(path.read_text(encoding="utf-8"))
+   291→   291→    except Exception:
+   292→   292→        return default
+   293→   293→
+   294→   294→def save_json(path: Path, data: Any) -> None:
+   295→   295→    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+   296→   296→
+   297→   297→def settings() -> Dict[str, Any]:
+   298→   298→    s = load_json(F_SETTINGS, {})
+   299→   299→    merged = json.loads(json.dumps(DEFAULT_SETTINGS))  # deep copy
+   300→   300→    for k, v in s.items():
+   301→   301→        if k == "stealth":
+   302→   302→            merged["stealth"].update({kk: vv for kk, vv in v.items() if kk != "per_platform"})
+   303→   303→            merged["stealth"]["per_platform"].update(v.get("per_platform", {}))
+   304→   304→        elif isinstance(v, dict):
+   305→   305→            merged[k].update(v)
+   306→   306→        else:
+   307→   307→            merged[k] = v
+   308→   308→    return merged
+   309→   309→
+   310→   310→def creds() -> Dict[str, Any]:
+   311→   311→    return load_json(F_CREDS, {})
+   312→   312→
+   313→   313→def load_schedules() -> List[Dict[str, Any]]:
+   314→   314→    return load_json(F_SCHED, [])
+   315→   315→
+   316→   316→def save_schedules(data: List[Dict[str, Any]]) -> None:
+   317→   317→    save_json(F_SCHED, data)
+   318→   318→
+   319→   319→LOGS: List[Dict[str, str]] = []
+   320→   320→WS_CLIENTS: set = set()
+   321→   321→STATS: Dict[str, Any] = {"date": datetime.now().strftime("%Y-%m-%d"), "runs": 0, "success": 0, "fail": 0}
+   322→   322→CURRENT_RUN: Optional[Dict[str, Any]] = None
+   323→   323→LAST_RESULT: Optional[Dict[str, Any]] = None
+   324→   324→RUNNING_SCHED: set = set()
+   325→   325→
+   326→   326→async def broadcast(obj: Dict[str, Any]) -> None:
+   327→   327→    dead = set()
+   328→   328→    msg = json.dumps(obj, ensure_ascii=False)
+   329→   329→    for ws in list(WS_CLIENTS):
+   330→   330→        try:
+   331→   331→            await ws.send_text(msg)
+   332→   332→        except Exception:
+   333→   333→            dead.add(ws)
+   334→   334→    WS_CLIENTS.difference_update(dead)
+   335→   335→
+   336→   336→def log(message: str, level: str = "info") -> None:
+   337→   337→    entry = {"t": datetime.now().strftime("%H:%M:%S"), "msg": message, "level": level}
+   338→   338→    LOGS.append(entry)
+   339→   339→    if len(LOGS) > 400:
+   340→   340→        del LOGS[:200]
+   341→   341→    try:
+   342→   342→        loop = asyncio.get_running_loop()
+   343→   343→        loop.create_task(broadcast({"type": "log", **entry}))
+   344→   344→    except RuntimeError:
+   345→   345→        pass
+   346→   346→
+   347→   347→def media_list() -> List[Dict[str, Any]]:
+   348→   348→    out = []
+   349→   349→    for f in sorted(MEDIA_DIR.iterdir(), key=lambda x: -x.stat().st_mtime):
+   350→   350→        if f.is_file() and not f.name.startswith("."):
+   351→   351→            out.append({"name": f.name, "size": f.stat().st_size,
+   352→   352→                        "image": f.suffix.lower() in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")})
+   353→   353→    return out
+   354→   354→
+   355→   355→def macro_names() -> List[Dict[str, Any]]:
+   356→   356→    """فهرست ماکروها به‌شکل [{name, events}] — هماهنگ با /api/macro/list و رندر پنل."""
+   357→   357→    out: List[Dict[str, Any]] = []
+   358→   358→    for f in sorted(MACROS_DIR.glob("*.json")):
+   359→   359→        try:
+   360→   360→            n = len(json.loads(f.read_text(encoding="utf-8")))
+   361→   361→        except Exception:
+   362→   362→            n = 0
+   363→   363→        out.append({"name": f.stem, "events": n})
+   364→   364→    return out
+   365→   365→
+   366→   366→# ---------------------------------------------------------------- رفتار انسانی
+   367→   367→def _stealth() -> Dict[str, Any]:
+   368→   368→    return settings()["stealth"]
+   369→   369→
+   370→   370→async def hdelay(lo: float = 0.8, hi: float = 2.8) -> None:
+   371→   371→    if not _stealth().get("human_delays", True):
+   372→   372→        lo, hi = min(lo, 0.5), min(hi, 0.9)
+   373→   373→    await asyncio.sleep(random.uniform(lo, hi))
+   374→   374→
+   375→   375→_TYPE_SPEEDS: Dict[str, tuple] = {"off": (0.0, 0.0), "fast": (0.03, 0.09), "human": (0.06, 0.19), "slow": (0.14, 0.38)}
+   376→   376→
+   377→   377→def _night_now() -> bool:
+   378→   378→    """مکث شبانه (۱ تا ۷ بامداد) — ساعت‌هایی که هیچ انسانی فعال نیست."""
+   379→   379→    try:
+   380→   380→        return bool(_stealth().get("night_pause", True)) and datetime.now().hour in (1, 2, 3, 4, 5, 6)
+   381→   381→    except Exception:
+   382→   382→        return False
+   383→   383→
+   384→   384→async def goto(page, url: str) -> None:
+   385→   385→    await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+   386→   386→    await hdelay(1.2, 2.6)
+   387→   387→    # اسکرول تصادفی کوتاه — انسان‌ها بعد از باز شدن صفحه کمی اسکرول می‌کنند
+   388→   388→    if _stealth().get("random_scrolls", True) and random.random() < 0.45:
+   389→   389→        try:
+   390→   390→            await page.mouse.wheel(0, random.randint(140, 520))
+   391→   391→            await asyncio.sleep(random.uniform(0.5, 1.4))
+   392→   392→            await page.mouse.wheel(0, -random.randint(30, 140))
+   393→   393→        except Exception:
+   394→   394→            pass
+   395→   395→
+   396→   396→async def hclick(page, sel: str, timeout: int = 8000) -> bool:
+   397→   397→    st = _stealth()
+   398→   398→    if st.get("human_delays", True):
+   399→   399→        await asyncio.sleep(random.uniform(0.3, 0.9))
+   400→   400→    # حرکت موس با مسیر منحنی (بازیجی) به‌جای پرش ناگهانی — امضای موس ربات‌ها خط راست است
+   401→   401→    if st.get("mouse_curves", True):
+   402→   402→        try:
+   403→   403→            box = await page.locator(sel).first.bounding_box()
+   404→   404→            if box:
+   405→   405→                tx = box["x"] + box["width"] * random.uniform(0.25, 0.75)
+   406→   406→                ty = box["y"] + box["height"] * random.uniform(0.3, 0.7)
+   407→   407→                sx = tx - random.uniform(110, 300)
+   408→   408→                sy = ty + random.uniform(30, 150)
+   409→   409→                cx = tx + random.uniform(-70, 70)
+   410→   410→                cy = ty - random.uniform(20, 80)
+   411→   411→                steps = random.randint(12, 24)
+   412→   412→                for i in range(1, steps + 1):
+   413→   413→                    t = i / steps
+   414→   414→                    mt = 1 - t
+   415→   415→                    x = mt * mt * sx + 2 * mt * t * cx + t * t * tx
+   416→   416→                    y = mt * mt * sy + 2 * mt * t * cy + t * t * ty
+   417→   417→                    await page.mouse.move(x, y)
+   418→   418→                await asyncio.sleep(random.uniform(0.04, 0.15))
+   419→   419→        except Exception:
+   420→   420→            pass
+   421→   421→    await page.click(sel, timeout=timeout)
+   422→   422→    return True
+   423→   423→
+   424→   424→async def htype(page, sel: Optional[str], text: str) -> None:
+   425→   425→    if sel:
+   426→   426→        await page.click(sel, timeout=8000)
+   427→   427→    st = _stealth()
+   428→   428→    if not st.get("human_typing", True):
+   429→   429→        await page.keyboard.type(text)
+   430→   430→        return
+   431→   431→    lo, hi = _TYPE_SPEEDS.get(st.get("typing_speed", "human"), _TYPE_SPEEDS["human"])
+   432→   432→    for ch in text:
+   433→   433→        await page.keyboard.type(ch)
+   434→   434→        if lo:
+   435→   435→            await asyncio.sleep(random.uniform(lo, hi))
+   436→   436→            if random.random() < 0.04:  # مکث «فکر کردن» انسانی وسط تایپ
+   437→   437→                await asyncio.sleep(random.uniform(0.25, 0.7))
+   438→   438→
+   439→   439→async def click_first(page, sels: List[str], timeout: int = 6000) -> bool:
+   440→   440→    for sel in sels:
+   441→   441→        try:
+   442→   442→            if await page.locator(sel).count():
+   443→   443→                await hclick(page, sel, timeout=timeout)
+   444→   444→                return True
+   445→   445→        except Exception:
+   446→   446→            continue
+   447→   447→    return False
+   448→   448→
+   449→   449→# ---------------------------------------------------------------- ضد شناسایی v3 (متد روز دنیا)
+   450→   450→# اصل طلایی: «اثر انگشت پایدار». نویز تصادفیِ هر بار، خودش توسط سیستم‌های
+   451→   451→# ضد ربات (مثل CreepJS) شناسایی می‌شود؛ ما برای هر پروفایل یک seed دائمی
+   452→   452→# می‌سازیم تا GPU/CPU/Canvas/صدا بین اجراها ثابت بماند — یعنی شما یک
+   453→   453→# «انسانِ همیشگی» با یک سیستم مشخص باشید، نه یک رباتِ هر بار متفاوت.
+   454→   454→GPU_POOL = [
+   455→   455→    ("Google Inc. (NVIDIA)", "ANGLE (NVIDIA, NVIDIA GeForce GTX 1660 SUPER Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   456→   456→    ("Google Inc. (Intel)", "ANGLE (Intel, Intel(R) UHD Graphics 630 (0x00003E92) Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   457→   457→    ("Google Inc. (AMD)", "ANGLE (AMD, AMD Radeon(TM) Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   458→   458→    ("Google Inc. (Intel)", "ANGLE (Intel, Intel(R) Iris(R) Xe Graphics Direct3D11 vs_5_0 ps_5_0, D3D11)"),
+   459→   459→]
+   460→   460→CORES_POOL = [4, 6, 8, 12, 16]
+   461→   461→MEM_POOL = [4, 8, 8, 16]
+   462→   462→
+   463→   463→def fp_values(platform: str) -> Dict[str, Any]:
+   464→   464→    """مقادیر اثر انگشت پایدار برای هر پلتفرم (seed دائمی در پروفایل ذخیره می‌شود)."""
+   465→   465→    pdir = PROFILES_DIR / platform
+   466→   466→    try:
+   467→   467→        pdir.mkdir(parents=True, exist_ok=True)
+   468→   468→    except Exception:
+   469→   469→        pass
+   470→   470→    f = pdir / ".fpseed"
+   471→   471→    seed = 0
+   472→   472→    try:
+   473→   473→        seed = int(f.read_text(encoding="utf-8").strip())
+   474→   474→    except Exception:
+   475→   475→        seed = random.randrange(1, 2 ** 31)
+   476→   476→        try:
+   477→   477→            f.write_text(str(seed), encoding="utf-8")
+   478→   478→        except Exception:
+   479→   479→            pass
+   480→   480→    h = hashlib.sha256(f"parsagent:{platform}:{seed}".encode()).digest()
+   481→   481→    gpu = GPU_POOL[h[0] % len(GPU_POOL)]
+   482→   482→    return {
+   483→   483→        "seed": seed,
+   484→   484→        "vendor": gpu[0], "renderer": gpu[1],
+   485→   485→        "cores": CORES_POOL[h[1] % len(CORES_POOL)],
+   486→   486→        "mem": MEM_POOL[h[2] % len(MEM_POOL)],
+   487→   487→        # جابجایی پیکسل ثابت Canvas (پایدار — نه تصادفی)
+   488→   488→        "d1": (h[3] % 3) - 1, "d2": (h[4] % 3) - 1,
+   489→   489→    }
+   490→   490→
+   491→   491→STEALTH_JS = r"""
+   492→   492→(() => {
+   493→   493→  try {
+   494→   494→    const C = window.__PA_CFG__ || {};
+   495→   495→    /* —— ضد تشخیصِ تشخیص: همهٔ تابع‌های وصله‌شده «native» به نظر می‌رسند (toString cloak) */
+   496→   496→    const NATIVE = new Map();
+   497→   497→    const _ts = Function.prototype.toString;
+   498→   498→    Function.prototype.toString = function () {
+   499→   499→      const n = NATIVE.get(this);
+   500→   500→      if (n) return "function " + n + "() { [native code] }";
+   501→   501→      return _ts.call(this);
+   502→   502→    };
+   503→   503→    NATIVE.set(Function.prototype.toString, "toString");
+   504→   504→    const cloak = (fn, name) => { try { NATIVE.set(fn, name); } catch (e) {} };
+   505→   505→    const def = (obj, prop, value) => {
+   506→   506→      try { Object.defineProperty(obj, prop, { get: () => value, configurable: true }); } catch (e) {}
+   507→   507→    };
+   508→   508→
+   509→   509→    /* ============ گروه ۱: هویت مرورگر ============ */
+   510→   510→    if (C.hide_webdriver !== false) {
+   511→   511→      try { delete Object.getPrototypeOf(navigator).webdriver; } catch (e) {}
+   512→   512→      def(navigator, "webdriver", undefined);
+   513→   513→    }
+   514→   514→    if (C.spoof_languages !== false) {
+   515→   515→      def(navigator, "languages", ["fa-IR", "fa", "en-US", "en"]);
+   516→   516→      def(navigator, "language", "fa-IR");
+   517→   517→    }
+   518→   518→    if (C.plugins_mimic !== false) {
+   519→   519→      const names = ["PDF Viewer", "Chrome PDF Viewer", "Chromium PDF Viewer", "Microsoft Edge PDF Viewer", "WebKit built-in PDF"];
+   520→   520→      const pl = names.map((n) => ({ name: n, filename: "internal-pdf-viewer", description: "Portable Document Format", length: 1 }));
+   521→   521→      def(navigator, "plugins", pl);
+   522→   522→      def(navigator, "mimeTypes", [{ type: "application/pdf", suffixes: "pdf", description: "Portable Document Format", enabledPlugin: pl[0] }]);
+   523→   523→    }
+   524→   524→    if (C.chrome_runtime !== false) {
+   525→   525→      /* window.chrome کامل — حالت خالی/ناقص خودش نشانهٔ اتوماسیون است */
+   526→   526→      window.chrome = window.chrome || {};
+   527→   527→      const ch = window.chrome;
+   528→   528→      ch.app = ch.app || { isInstalled: false };
+   529→   529→      ch.runtime = ch.runtime || { OnInstalledReason: {}, PlatformOs: {}, connect: function () {}, sendMessage: function () {} };
+   530→   530→      ch.loadTimes = ch.loadTimes || function () {};
+   531→   531→      ch.csi = ch.csi || function () {};
+   532→   532→    }
+   533→   533→    if (C.permissions_fix !== false) {
+   534→   534→      try {
+   535→   535→        const q = navigator.permissions.query.bind(navigator.permissions);
+   536→   536→        navigator.permissions.query = (p) => (p && p.name === "notifications")
+   537→   537→          ? Promise.resolve({ state: Notification.permission }) : q(p);
+   538→   538→        cloak(navigator.permissions.query, "query");
+   539→   539→      } catch (e) {}
+   540→   540→    }
+   541→   541→    if (C.ua_fix !== false || C.spoof_ua) {
+   542→   542→      try {
+   543→   543→        let ua = navigator.userAgent.replace(/Headless(Chrome)/g, "$1");
+   544→   544→        if (C.spoof_ua && C.user_agent) ua = C.user_agent;
+   545→   545→        def(navigator, "userAgent", ua);
+   546→   546→      } catch (e) {}
+   547→   547→    }
+   548→   548→
+   549→   549→    /* ============ گروه ۲: اثر انگشت دیجیتال (پایدار از seed پروفایل) ============ */
+   550→   550→    if (C.hardware_specs !== false) {
+   551→   551→      def(navigator, "hardwareConcurrency", C.cores || 8);
+   552→   552→      try { def(navigator, "deviceMemory", C.mem || 8); } catch (e) {}
+   553→   553→      def(navigator, "maxTouchPoints", 0);
+   554→   554→    }
+   555→   555→    if (C.webgl_mask !== false) {
+   556→   556→      for (const proto of [window.WebGLRenderingContext, window.WebGL2RenderingContext]) {
+   557→   557→        if (!proto) continue;
+   558→   558→        try {
+   559→   559→          const gp = proto.prototype.getParameter;
+   560→   560→          proto.prototype.getParameter = function (a) {
+   561→   561→            if (a === 37445) return C.vendor;
+   562→   562→            if (a === 37446) return C.renderer;
+   563→   563→            return gp.apply(this, [a]);
+   564→   564→          };
+   565→   565→          cloak(proto.prototype.getParameter, "getParameter");
+   566→   566→        } catch (e) {}
+   567→   567→      }
+   568→   568→    }
+   569→   569→    if (C.canvas_noise !== false) {
+   570→   570→      /* نویز پایدار: مقدار ثابت d1/d2 از seed — دو بار خواندن Canvas همان
+   571→   571→         نتیجه را می‌دهد. نویز تصادفیِ هر بار، الگوریتم CreepJS فوراً لو می‌دهد. */
+   572→   572→      try {
+   573→   573→        const done = new WeakSet();
+   574→   574→        const td = HTMLCanvasElement.prototype.toDataURL;
+   575→   575→        HTMLCanvasElement.prototype.toDataURL = function (...args) {
+   576→   576→          try {
+   577→   577→            if (this.width > 1 && this.height > 1 && !done.has(this)) {
+   578→   578→              const c = this.getContext("2d");
+   579→   579→              if (c) {
+   580→   580→                const x = c.getImageData(0, 0, Math.min(this.width, 8), 1);
+   581→   581→                x.data[0] += (C.d1 || 1); x.data[1] += (C.d2 || 1);
+   582→   582→                c.putImageData(x, 0, 0);
+   583→   583→                done.add(this);
+   584→   584→              }
+   585→   585→            }
+   586→   586→          } catch (e) {}
+   587→   587→          return td.apply(this, args);
+   588→   588→        };
+   589→   589→        cloak(HTMLCanvasElement.prototype.toDataURL, "toDataURL");
+   590→   590→      } catch (e) {}
+   591→   591→    }
+   592→   592→    if (C.audio_noise !== false) {
+   593→   593→      try {
+   594→   594→        const gd = AudioBuffer.prototype.getChannelData;
+   595→   595→        AudioBuffer.prototype.getChannelData = function (ch) {
+   596→   596→          const d = gd.apply(this, [ch]);
+   597→   597→          try { if (d && d.length) d[Math.min(3, d.length - 1)] += 1e-7 * ((C.seed % 7) + 1); } catch (e) {}
+   598→   598→          return d;
+   599→   599→        };
+   600→   600→        cloak(AudioBuffer.prototype.getChannelData, "getChannelData");
+   601→   601→      } catch (e) {}
+   602→   602→    }
+   603→   603→    if (C.font_mask !== false) {
+   604→   604→      /* شمارش فونت‌ها: فونت‌های رایج ویندوز = بله؛ فونت ساختگی = نه */
+   605→   605→      try {
+   606→   606→        if (document.fonts && document.fonts.check) {
+   607→   607→          const COMMON = ["Arial", "Calibri", "Cambria", "Consolas", "Courier New", "Georgia",
+   608→   608→                          "Impact", "Segoe UI", "Tahoma", "Times New Roman", "Trebuchet MS", "Verdana"];
+   609→   609→          document.fonts.check = (font, text) => {
+   610→   610→            try {
+   611→   611→              const fam = String(font || "").toLowerCase();
+   612→   612→              if (COMMON.some((fn) => fam.includes(fn.toLowerCase()))) return true;
+   613→   613→            } catch (e) {}
+   614→   614→            return false;
+   615→   615→          };
+   616→   616→          cloak(document.fonts.check, "check");
+   617→   617→        }
+   618→   618→      } catch (e) {}
+   619→   619→    }
+   620→   620→    if (C.webrtc_shield) {
+   621→   621→      /* جلوگیری از لو رفتن IP محلی از طریق WebRTC (پیش‌فرض خاموش —
+   622→   622→         تماس صوتی/تصویری پیام‌رسان‌ها ممکن است به هم بریزد) */
+   623→   623→      try {
+   624→   624→        const OC = window.RTCPeerConnection;
+   625→   625→        if (OC) {
+   626→   626→          const NW = function RTCPeerConnection() {
+   627→   627→            const pc = new OC(...arguments);
+   628→   628→            pc.addEventListener("icecandidate", (e) => {
+   629→   629→              if (e.candidate && e.candidate.candidate && !/typ relay/.test(e.candidate.candidate)) {
+   630→   630→                e.stopImmediatePropagation();
+   631→   631→              }
+   632→   632→            }, true);
+   633→   633→            return pc;
+   634→   634→          };
+   635→   635→          NW.prototype = OC.prototype;
+   636→   636→          window.RTCPeerConnection = NW;
+   637→   637→        }
+   638→   638→      } catch (e) {}
+   639→   639→    }
+   640→   640→  } catch (e) {}
+   641→   641→})();
+   642→   642→"""
+   643→   643→
+   644→   644→def build_stealth_init(st: Dict[str, Any], platform: str) -> str:
+   645→   645→    """اسکریپت راه‌اندازی کامل ضد شناسایی برای تزریق در نشست مرورگر."""
+   646→   646→    s = st["stealth"]
+   647→   647→    fp = fp_values(platform)
+   648→   648→    cfg: Dict[str, Any] = {k: bool(s.get(k, True)) for k in (
+   649→   649→        "hide_webdriver", "spoof_languages", "plugins_mimic", "chrome_runtime", "permissions_fix",
+   650→   650→        "ua_fix", "webgl_mask", "canvas_noise", "audio_noise", "font_mask", "hardware_specs")}
+   651→   651→    cfg["webrtc_shield"] = bool(s.get("webrtc_shield", False))
+   652→   652→    cfg["spoof_ua"] = bool(s.get("spoof_ua", False))
+   653→   653→    cfg["user_agent"] = (s.get("user_agent") or "").strip()
+   654→   654→    cfg.update(vendor=fp["vendor"], renderer=fp["renderer"], cores=fp["cores"],
+   655→   655→               mem=fp["mem"], d1=fp["d1"], d2=fp["d2"], seed=fp["seed"])
+   656→   656→    return "window.__PA_CFG__ = %s;\n%s" % (json.dumps(cfg), STEALTH_JS)
+   657→   657→
+   658→   658→RECORDER_JS = """
+   659→   659→(() => {
+   660→   660→  if (window.__PA_REC_ACTIVE__) return;
+   661→   661→  window.__PA_REC_ACTIVE__ = true;
+   662→   662→  const q = (el) => {
+   663→   663→    if (!el || el === document.documentElement) return 'body';
+   664→   664→    let n = el, path = [];
+   665→   665→    while (n && n.nodeType === 1 && n !== document.body) {
+   666→   666→      let s = n.tagName.toLowerCase();
+   667→   667→      if (n.id) { path.unshift('#' + (window.CSS && CSS.escape ? CSS.escape(n.id) : n.id)); break; }
+   668→   668→      const nm = n.getAttribute && n.getAttribute('name');
+   669→   669→      if (nm) s += '[name="' + nm + '"]';
+   670→   670→      const sib = Array.from(n.parentNode ? n.parentNode.children : []).filter(x => x.tagName === n.tagName);
+   671→   671→      if (sib.length > 1) s += ':nth-of-type(' + (sib.indexOf(n) + 1) + ')';
+   672→   672→      path.unshift(s);
+   673→   673→      n = n.parentElement;
+   674→   674→    }
+   675→   675→    if (!path.length) path = ['body'];
+   676→   676→    return path.join(' > ');
+   677→   677→  };
+   678→   678→  document.addEventListener('click', (e) => {
+   679→   679→    try {
+   680→   680→      let t = e.target;
+   681→   681→      if (t && t.closest) t = t.closest('a,button,input,textarea,select,[role=button],[onclick],label,svg,path') || t;
+   682→   682→      window.__pa_rec(JSON.stringify({t: 'click', sel: q(t), ts: Date.now()}));
+   683→   683→    } catch(err) {}
+   684→   684→  }, true);
+   685→   685→  document.addEventListener('change', (e) => {
+   686→   686→    try {
+   687→   687→      const t = e.target;
+   688→   688→      if (!t || !t.tagName) return;
+   689→   689→      const ok = t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' ||
+   690→   690→        (t.tagName === 'INPUT' && ['text','password','email','tel','number','search','url'].includes(t.type));
+   691→   691→      if (ok) window.__pa_rec(JSON.stringify({t: 'input', sel: q(t), v: t.value || '', ts: Date.now()}));
+   692→   692→    } catch(err) {}
+   693→   693→  }, true);
+   694→   694→})();
+   695→   695→"""
+   696→   696→
+   697→   697→# ---------------------------------------------------------------- نشست مرورگر
+   698→   698→class BotSession:
+   699→   699→    def __init__(self, platform: str):
+   700→   700→        self.platform = platform
+   701→   701→        self.p = None
+   702→   702→        self.context = None
+   703→   703→        self.page = None
+   704→   704→        self.recording = False
+   705→   705→        self.rec_events: List[Dict[str, Any]] = []
+   706→   706→        self._exposed = False
+   707→   707→
+   708→   708→    @property
+   709→   709→    def open(self) -> bool:
+   710→   710→        return self.context is not None
+   711→   711→
+   712→   712→    async def ensure(self):
+   713→   713→        if self.context:
+   714→   714→            self.page = self.context.pages[0] if self.context.pages else self.page
+   715→   715→            return self.page
+   716→   716→        from playwright.async_api import async_playwright  # noqa
+   717→   717→        self.p = await async_playwright().start()
+   718→   718→        st = settings()
+   719→   719→        g = st["general"]
+   720→   720→        stealth_on = st["stealth"]["enabled"] and st["stealth"].get("per_platform", {}).get(self.platform, True)
+   721→   721→        args = ["--disable-blink-features=AutomationControlled", "--no-first-run",
+   722→   722→                "--no-default-browser-check", "--disable-notifications"]
+   723→   723→        if g.get("start_maximized", True):
+   724→   724→            args.append("--start-maximized")
+   725→   725→        if stealth_on:
+   726→   726→            args.append("--lang=fa-IR")
+   727→   727→        last_err: Optional[Exception] = None
+   728→   728→        for ch in FALLBACKS:
+   729→   729→            try:
+   730→   730→                kw: Dict[str, Any] = dict(
+   731→   731→                    user_data_dir=str(PROFILES_DIR / self.platform),
+   732→   732→                    headless=bool(g.get("headless", False)),
+   733→   733→                    args=args, viewport=None,
+   734→   734→                    ignore_default_args=["--enable-automation"],
+   735→   735→                )
+   736→   736→                if ch and g.get("channel", "auto") != "auto":
+   737→   737→                    if ch != g["channel"]:
+   738→   738→                        continue
+   739→   739→                elif ch and g.get("channel", "auto") == "auto":
+   740→   740→                    kw["channel"] = ch
+   741→   741→                if g.get("proxy"):
+   742→   742→                    kw["proxy"] = {"server": g["proxy"]}
+   743→   743→                self.context = await self.p.chromium.launch_persistent_context(**kw)
+   744→   744→                break
+   745→   745→            except Exception as e:  # noqa
+   746→   746→                last_err = e
+   747→   747→                self.context = None
+   748→   748→        if not self.context:
+   749→   749→            raise RuntimeError(f"باز شدن مرورگر ممکن نشد: {last_err}")
+   750→   750→        if stealth_on:
+   751→   751→            await self.context.add_init_script(build_stealth_init(st, self.platform))
+   752→   752→            fp = fp_values(self.platform)
+   753→   753→            log(f"🥷 ضد شناسایی v3 روی {self.platform} فعال شد — اثر انگشت پایدار #{fp['seed'] % 10000} (GPU: {fp['vendor'].split('(')[-1][:-1]})")
+   754→   754→        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+   755→   755→        return self.page
+   756→   756→
+   757→   757→    async def close(self) -> None:
+   758→   758→        try:
+   759→   759→            if self.context:
+   760→   760→                await self.context.close()
+   761→   761→        except Exception:
+   762→   762→            pass
+   763→   763→        try:
+   764→   764→            if self.p:
+   765→   765→                await self.p.stop()
+   766→   766→        except Exception:
+   767→   767→            pass
+   768→   768→        self.context = None
+   769→   769→        self.page = None
+   770→   770→        self.p = None
+   771→   771→
+   772→   772→SESSIONS: Dict[str, BotSession] = {pid: BotSession(pid) for pid in PLAT_IDS}
+   773→   773→LOCKS: Dict[str, asyncio.Lock] = {pid: asyncio.Lock() for pid in PLAT_IDS}
+   774→   774→
+   775→   775→async def get_session(platform: str) -> BotSession:
+   776→   776→    sess = SESSIONS[platform]
+   777→   777→    if not sess.open:
+   778→   778→        log(f"🚀 در حال باز کردن مرورگر برای {platform} …")
+   779→   779→    await sess.ensure()
+   780→   780→    return sess
+   781→   781→
+   782→   782→# ---------------------------------------------------------------- کپچا
+   783→   783→CAPTCHA_SEL = ("iframe[src*='recaptcha'], iframe[title*='reCAPTCHA' i], iframe[src*='hcaptcha'], "
+   784→   784→               "iframe[data-hcaptcha-widget], iframe[src*='funcaptcha'], iframe[src*='arcade'], "
+   785→   785→               "div.g-recaptcha, div.h-captcha")
+   786→   786→
+   787→   787→async def captcha_present(page) -> bool:
+   788→   788→    try:
+   789→   789→        return await page.locator(CAPTCHA_SEL).count() > 0
+   790→   790→    except Exception:
+   791→   791→        return False
+   792→   792→
+   793→   793→def _http_json(url: str, data: Optional[Dict[str, str]] = None, timeout: int = 40) -> Dict[str, Any]:
+   794→   794→    if data:
+   795→   795→        body = urllib.parse.urlencode(data).encode()
+   796→   796→        req = urllib.request.Request(url, data=body)
+   797→   797→    else:
+   798→   798→        req = urllib.request.Request(url)
+   799→   799→    with urllib.request.urlopen(req, timeout=timeout) as r:
+   800→   800→        return json.loads(r.read().decode())
+   801→   801→
+   802→   802→async def _extract_sitekey(page) -> Optional[str]:
+   803→   803→    js = """() => {
+   804→   804→        const el = document.querySelector('.g-recaptcha[data-sitekey], .h-captcha[data-sitekey]');
+   805→   805→        if (el) return el.getAttribute('data-sitekey');
+   806→   806→        const m = document.documentElement.innerHTML.match(/data-sitekey="([^"]+)"/);
+   807→   807→        if (m) return m[1];
+   808→   808→        const s = document.querySelector('script[src*="recaptcha/api.js"]');
+   809→   809→        if (s) { const r = s.src.match(/render=([^&]+)/); if (r) return r[1]; }
+   810→   810→        return null;
+   811→   811→    }"""
+   812→   812→    try:
+   813→   813→        return await page.evaluate(js)
+   814→   814→    except Exception:
+   815→   815→        return None
+   816→   816→
+   817→   817→async def solve_with_provider(page) -> str:
+   818→   818→    st = settings()["captcha"]
+   819→   819→    sitekey = await _extract_sitekey(page)
+   820→   820→    if not sitekey:
+   821→   821→        log("⚠ sitekey کپچا پیدا نشد", "warn")
+   822→   822→        return "failed"
+   823→   823→    pageurl = page.url
+   824→   824→    hcaptcha = "hcaptcha" in (page.content()[:200000] if False else "") or await page.evaluate(
+   825→   825→        "() => !!document.querySelector('iframe[src*=hcaptcha], .h-captcha')")
+   826→   826→    provider, key = st.get("provider", "2captcha"), st.get("api_key", "")
+   827→   827→    if not key:
+   828→   828→        log("⚠ کلید سرویس کپچا در تنظیمات خالی است", "warn")
+   829→   829→        return "failed"
+   830→   830→    try:
+   831→   831→        import urllib.request as _u
+   832→   832→        if provider == "capsolver":
+   833→   833→            payload = json.dumps({
+   834→   834→                "clientKey": key,
+   835→   835→                "task": {"type": "HCaptchaTaskProxyLess" if hcaptcha else "ReCaptchaV2TaskProxyLess",
+   836→   836→                         "websiteURL": pageurl, "websiteKey": sitekey},
+   837→   837→            }).encode()
+   838→   838→            req = _u.Request("https://api.capsolver.com/createTask", data=payload,
+   839→   839→                            headers={"Content-Type": "application/json"})
+   840→   840→            with _u.urlopen(req, timeout=40) as r:
+   841→   841→                res = json.loads(r.read().decode())
+   842→   842→            task_id = res.get("taskId")
+   843→   843→            if not task_id:
+   844→   844→                log(f"⚠ capsolver خطا: {res.get('errorId')} {res.get('errorDescription')}", "error")
+   845→   845→                return "failed"
+   846→   846→            for _ in range(40):
+   847→   847→                await asyncio.sleep(5)
+   848→   848→                payload = json.dumps({"clientKey": key, "taskId": task_id}).encode()
+   849→   849→                req = _u.Request("https://api.capsolver.com/getTaskResult", data=payload,
+   850→   850→                                headers={"Content-Type": "application/json"})
+   851→   851→                with _u.urlopen(req, timeout=40) as r:
+   852→   852→                    res = json.loads(r.read().decode())
+   853→   853→                if res.get("status") == "ready":
+   854→   854→                    token = res["solution"].get("gRecaptchaResponse", "")
+   855→   855→                    break
+   856→   856→            else:
+   857→   857→                return "timeout"
+   858→   858→        else:  # 2captcha
+   859→   859→            method = "hcaptcha" if hcaptcha else "userrecaptcha"
+   860→   860→            res = await asyncio.to_thread(
+   861→   861→                _http_json,
+   862→   862→                f"https://2captcha.com/in.php?key={urllib.parse.quote(key)}&method={method}"
+   863→   863→                f"&googlekey={urllib.parse.quote(sitekey)}&pageurl={urllib.parse.quote(pageurl)}&json=1")
+   864→   864→            task_id = res.get("request") if res.get("status") == 1 else None
+   865→   865→            if not task_id:
+   866→   866→                log(f"⚠ 2captcha خطا: {res.get('request')}", "error")
+   867→   867→                return "failed"
+   868→   868→            token = ""
+   869→   869→            for _ in range(40):
+   870→   870→                await asyncio.sleep(5)
+   871→   871→                res = await asyncio.to_thread(
+   872→   872→                    _http_json,
+   873→   873→                    f"https://2captcha.com/res.php?key={urllib.parse.quote(key)}&action=get&id={urllib.parse.quote(task_id)}&json=1")
+   874→   874→                if res.get("status") == 1:
+   875→   875→                    token = res.get("request", "")
+   876→   876→                    break
+   877→   877→            if not token:
+   878→   878→                return "timeout"
+   879→   879→        # تزریق توکن
+   880→   880→        await page.evaluate("""(token) => {
+   881→   881→            const set = (id) => { const el = document.getElementById(id) || document.querySelector('textarea[name="' + id + '"]'); if (el) { el.style.display = 'block'; el.value = token; } };
+   882→   882→            ['g-recaptcha-response', 'h-captcha-response'].forEach(set);
+   883→   883→            document.querySelectorAll('textarea[name=g-recaptcha-response],textarea[name=h-captcha-response]').forEach(t => { t.style.display='block'; t.value = token; });
+   884→   884→        }""", token)
+   885→   885→        log("🔓 توکن کپچا تزریق شد؛ در حال تلاش برای ادامه…")
+   886→   886→        await asyncio.sleep(2)
+   887→   887→        return "solved"
+   888→   888→    except Exception as e:
+   889→   889→        log(f"⚠ خطای سرویس کپچا: {e}", "error")
+   890→   890→        return "failed"
+   891→   891→
+   892→   892→async def handle_captcha(page) -> str:
+   893→   893→    st = settings()["captcha"]
+   894→   894→    mode = st.get("mode", "notify")
+   895→   895→    if mode == "off":
+   896→   896→        return "none"
+   897→   897→    if not await captcha_present(page):
+   898→   898→        return "none"
+   899→   899→    log("🤖 کپچا شناسایی شد!", "warn")
+   900→   900→    if mode == "auto" and st.get("api_key"):
+   901→   901→        res = await solve_with_provider(page)
+   902→   902→        if res == "solved":
+   903→   903→            return "solved"
+   904→   904→        log("حل خودکار موفق نبود؛ منتظر حل دستی می‌مانم…", "warn")
+   905→   905→    wait = int(st.get("manual_wait_seconds", 180))
+   906→   906→    log(f"⏳ کپچا را دستی حل کنید — حداکثر {wait} ثانیه منتظر می‌مانم.", "warn")
+   907→   907→    for _ in range(wait):
+   908→   908→        await asyncio.sleep(1)
+   909→   909→        if not await captcha_present(page):
+   910→   910→            log("✅ کپچا حل شد (دستی)")
+   911→   911→            return "manual"
+   912→   912→    return "timeout"
+   913→   913→
+   914→   914→# ---------------------------------------------------------------- اکشن‌ها
+   915→   915→ACTION_IMPL: Dict[tuple, Any] = {}
+   916→   916→
+   917→   917→def action(pid: str, name: str):
+   918→   918→    def deco(fn):
+   919→   919→        ACTION_IMPL[(pid, name)] = fn
+   920→   920→        return fn
+   921→   921→    return deco
+   922→   922→
+   923→   923→def _media_path(name: Optional[str]) -> Optional[str]:
+   924→   924→    if not name:
+   925→   925→        return None
+   926→   926→    f = MEDIA_DIR / Path(name).name
+   927→   927→    return str(f.resolve()) if f.exists() else None
+   928→   928→
+   929→   929→async def _collect_users_from_links(page, url: str, pattern: str, count: int, skip=()) -> List[str]:
+   930→   930→    await goto(page, url)
+   931→   931→    hrefs = await page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))")
+   932→   932→    users, seen = [], set()
+   933→   933→    for h in hrefs:
+   934→   934→        if not h:
+   935→   935→            continue
+   936→   936→        m = re.match(pattern, h)
+   937→   937→        if m:
+   938→   938→            u = m.group(1)
+   939→   939→            if u.lower() not in seen and u.lower() not in skip:
+   940→   940→                seen.add(u.lower())
+   941→   941→                users.append(u)
+   942→   942→        if len(users) >= count:
+   943→   943→            break
+   944→   944→    return users
+   945→   945→
+   946→   946→for _pid, _url in ((p["id"], p["url"]) for p in PLATFORMS):
+   947→   947→
+   948→   948→    async def _make_open(sess, p, _url=_url):
+   949→   949→        page = await sess.ensure()
+   950→   950→        url = p.get("url") or _url
+   951→   951→        await goto(page, url)
+   952→   952→        return {"ok": True, "message": f"باز شد: {url}"}
+   953→   953→    ACTION_IMPL[(_pid, "open")] = _make_open
+   954→   954→
+   955→   955→async def _generic_login(sess, p):
+   956→   956→    page = await sess.ensure()
+   957→   957→    st = settings()
+   958→   958→    url = LOGIN_URLS[sess.platform]
+   959→   959→    await goto(page, url)
+   960→   960→    c = creds().get(sess.platform) or {}
+   961→   961→    filled = []
+   962→   962→    if st.get("auto_fill", True) and c.get("username"):
+   963→   963→        uf, pf = LOGIN_FIELDS.get(sess.platform, (None, None))
+   964→   964→        if uf:
+   965→   965→            try:
+   966→   966→                if await page.locator(uf).count():
+   967→   967→                    await htype(page, uf, c["username"])
+   968→   968→                    filled.append("نام کاربری")
+   969→   969→            except Exception as e:
+   970→   970→                log(f"⚠ تکمیل نام کاربری ناموفق: {e}", "warn")
+   971→   971→        if pf and c.get("password"):
+   972→   972→            try:
+   973→   973→                if await page.locator(pf).count():
+   974→   974→                    await htype(page, pf, c["password"])
+   975→   975→                    filled.append("رمز عبور")
+   976→   976→            except Exception as e:
+   977→   977→                log(f"⚠ تکمیل رمز ناموفق: {e}", "warn")
+   978→   978→        if filled and pf and c.get("password"):
+   979→   979→            await hdelay(0.6, 1.4)
+   980→   980→            if not await click_first(page, SUBMIT_HINTS):
+   981→   981→                log("دکمه ورود پیدا نشد — خودتان دکمه ورود را بزنید.", "warn")
+   982→   982→    cap = await handle_captcha(page)
+   983→   983→    msg = "فرم ورود باز شد"
+   984→   984→    if filled:
+   985→   985→        msg += " و پر شد: " + "، ".join(filled)
+   986→   986→    if cap != "none":
+   987→   987→        msg += f" | کپچا: {cap}"
+   988→   988→    msg += " — اگر کد تأیید (OTP) خواست، در خود سایت وارد کنید."
+   989→   989→    return {"ok": True, "message": msg}
+   990→   990→
+   991→   991→for _pid2 in PLAT_IDS:
+   992→   992→    ACTION_IMPL[(_pid2, "login")] = _generic_login
+   993→   993→
+   994→   994→async def _ensure_count(p) -> int:
+   995→   995→    try:
+   996→   996→        return max(1, int(p.get("count") or 1))
+   997→   997→    except Exception:
+   998→   998→        return 1
+   999→   999→
+  1000→  1000→# ----- اینستاگرام
+
+[showing lines 1-1000 of 1052; use offset=1001 with limit to continue reading]

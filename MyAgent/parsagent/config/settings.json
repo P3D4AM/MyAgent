@@ -1,0 +1,78 @@
+{
+  "general": {
+    "headless": false,
+    "channel": "auto",
+    "proxy": "",
+    "start_maximized": true
+  },
+  "stealth": {
+    "enabled": true,
+    "level": "standard",
+    "hide_webdriver": true,
+    "spoof_languages": true,
+    "plugins_mimic": true,
+    "chrome_runtime": true,
+    "permissions_fix": true,
+    "ua_fix": true,
+    "spoof_ua": false,
+    "user_agent": "",
+    "webgl_mask": true,
+    "canvas_noise": true,
+    "audio_noise": true,
+    "font_mask": true,
+    "hardware_specs": true,
+    "webrtc_shield": false,
+    "human_typing": true,
+    "human_delays": true,
+    "typing_speed": "human",
+    "mouse_curves": true,
+    "random_scrolls": true,
+    "page_dwell": true,
+    "night_pause": true,
+    "per_platform": {
+      "instagram": true,
+      "twitter": true,
+      "telegram": true,
+      "whatsapp": true,
+      "facebook": true,
+      "linkedin": true,
+      "bale": true,
+      "rubika": true
+    }
+  },
+  "auto_fill": true,
+  "captcha": {
+    "mode": "notify",
+    "provider": "2captcha",
+    "api_key": "",
+    "manual_wait_seconds": 180
+  },
+  "ai": {
+    "provider": "zai",
+    "model": "glm-4.6",
+    "autonomy": "semi",
+    "temperature": 0.7,
+    "proxy": "",
+    "api_keys": {
+      "groq": ""
+    },
+    "custom_base": "",
+    "custom_model": "",
+    "budgets": {
+      "posts_per_day": 4
+    },
+    "follow_plans": {},
+    "image": {
+      "provider": "pollinations",
+      "model": "flux"
+    },
+    "video": {
+      "voice": "fa-IR-FaridNeural",
+      "aspect": "9:16",
+      "seconds": 45,
+      "material": "ai",
+      "motion": "zoom"
+    },
+    "dm_reply": {}
+  }
+}

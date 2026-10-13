@@ -1,0 +1,76 @@
+{
+  "tasks": [
+    {
+      "name": "post_instagram_photo",
+      "description": "انتشار عکس با کپشن در اینستاگرام + اطلاع ویندوز",
+      "vars": {
+        "image": "assets/photo.jpg",
+        "caption": "Hello World از پارس‌ایجنت 🤖 #automation"
+      },
+      "steps": [
+        { "type": "platform", "platform": "instagram", "action": "post_photo",
+          "args": { "image": "{{image}}", "caption": "{{caption}}" } },
+        { "type": "notify", "message": "عکس اینستاگرام منتشر شد ✅" }
+      ],
+      "on_error": "abort",
+      "retries": 1
+    },
+    {
+      "name": "telegram_daily_message",
+      "description": "ارسال پیام روزانه به یک گروه تلگرامی",
+      "vars": { "chat": "ParsAgent Devs", "text": "گزارش روزانه ثبت شد ✅" },
+      "steps": [
+        { "type": "platform", "platform": "telegram", "action": "send_message",
+          "args": { "chat": "{{chat}}", "text": "{{text}}" } }
+      ],
+      "on_error": "continue",
+      "retries": 2
+    },
+    {
+      "name": "morning_routine",
+      "description": "روتین صبح: توییت + پست لینکدین + پیام بله",
+      "vars": {
+        "tweet": "صبح بخیر! امروز هم با اتوماسیون شروع می‌شود ☀️",
+        "post": "چکیده مقاله امروز منتشر شد.",
+        "chat": "تیم محصول"
+      },
+      "steps": [
+        { "type": "platform", "platform": "twitter", "action": "post_tweet",
+          "args": { "text": "{{tweet}}" } },
+        { "type": "wait", "seconds": 5 },
+        { "type": "platform", "platform": "linkedin", "action": "post",
+          "args": { "text": "{{post}}" } },
+        { "type": "platform", "platform": "bale", "action": "send_message",
+          "args": { "chat": "{{chat}}", "text": "روتین صبح انجام شد ✅" } },
+        { "type": "notify", "message": "روتین صبح کامل شد 🎉" }
+      ],
+      "on_error": "continue",
+      "retries": 1
+    },
+    {
+      "name": "website_health_check",
+      "description": "بررسی سلامت سایت با موتور مرورگر + اسکرین‌شات",
+      "vars": { "url": "https://example.com" },
+      "steps": [
+        { "type": "browser", "action": "goto", "url": "{{url}}" },
+        { "type": "browser", "action": "screenshot", "tag": "health" },
+        { "type": "notify", "message": "سایت بالاست ✅" }
+      ],
+      "on_error": "abort",
+      "retries": 3
+    },
+    {
+      "name": "desktop_shortcut_demo",
+      "description": "دموی موتور دسکتاپ: هاتکی، تایپ و کلیک تصویری",
+      "vars": {},
+      "steps": [
+        { "type": "desktop", "action": "hotkey", "keys": ["win", "r"] },
+        { "type": "desktop", "action": "type_text", "text": "notepad" },
+        { "type": "desktop", "action": "click_image", "image": "assets/notepad_icon.png" },
+        { "type": "notify", "message": "دموی دسکتاپ اجرا شد" }
+      ],
+      "on_error": "continue",
+      "retries": 0
+    }
+  ]
+}

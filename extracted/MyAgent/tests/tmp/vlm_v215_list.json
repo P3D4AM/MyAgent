@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "1) **Yes.** The first row ('استوری-گذاشتن') has a green chip labeled '📸 اینستاگرام'.\n2) **Yes.** The second row ('قدیمی-ماکرو') shows a dropdown (select) instead of a green chip.\n3) **Yes.** Both rows have green '▶ اجرا' buttons.\n4) **No.** There is no visible overlap or misalignment; the layout is clean and well-aligned.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1791888399,
+  "id": "20261013184636021dd7787893422d",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "20261013184636021dd7787893422d",
+  "usage": {
+    "completion_tokens": 103,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 1772,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "total_tokens": 1875
+  }
+}

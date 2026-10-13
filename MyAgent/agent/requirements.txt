@@ -1,0 +1,23 @@
+# ParsAgent — Windows automation agent (Python 3.10+)
+# install:  pip install -r requirements.txt
+# browsers: on Windows 10/11 NO download is needed — the resilient
+#           launcher uses the installed Edge (msedge) or Chrome first,
+#           and only falls back to the bundled Playwright Chromium.
+#           optional bundled chromium:  install_browsers.bat
+#           (downloads from the npmmirror CDN — works in Iran, no VPN)
+#           or:  python main.py install
+
+pyautogui>=0.9.54        # real mouse & keyboard control
+pynput>=1.7.6            # global input recording (macros)
+playwright>=1.44.0       # code-level browser automation
+rich>=13.7.0             # pretty console & logging
+plyer>=2.1.0             # Windows toast notifications
+websockets>=12.0         # remote-control gateway (optional)
+Pillow>=10.2.0           # screenshots & image matching
+opencv-python>=4.9.0     # confidence-based image matching (optional)
+psutil>=5.9.0            # CPU/RAM telemetry for the gateway (optional)
+
+# --- وب پنل محلی (server.py + launcher.py) ---
+fastapi>=0.110.0         # سرور پنل کنترل تحت وب
+uvicorn>=0.29.0          # اجرای سرور ASGI
+pyperclip>=1.8.2         # تایپ متن فارسی از طریق کلیپ‌بورد

@@ -1,0 +1,422 @@
+     1→<!DOCTYPE html>
+     2→<html lang="fa" dir="rtl">
+     3→<head>
+     4→<meta charset="utf-8">
+     5→<meta name="viewport" content="width=device-width, initial-scale=1">
+     6→<title>ParsAgent — پنل مدیریت</title>
+     7→<style>
+     8→:root{
+     9→  --bg:#0f1420;--card:#171e2e;--card2:#1c2438;--border:#27314b;--text:#e8ecf5;--muted:#93a0b8;
+    10→  --accent:#10b981;--accent-soft:rgba(16,185,129,.12);--accent-b:rgba(16,185,129,.35);
+    11→  --amber:#f59e0b;--danger:#ef4444;--ok:#22c55e;
+    12→}
+    13→*{box-sizing:border-box}
+    14→body{margin:0;background:var(--bg);color:var(--text);min-height:100vh;display:flex;flex-direction:column;
+    15→  font-family:Vazirmatn,'Segoe UI',Tahoma,Arial,sans-serif;font-size:14px}
+    16→header{position:sticky;top:0;z-index:50;background:rgba(15,20,32,.94);backdrop-filter:blur(10px);
+    17→  border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:10px 18px;flex-wrap:wrap}
+    18→.brand{font-size:17px;font-weight:800;white-space:nowrap}
+    19→.brand span{color:var(--accent)}
+    20→nav.tabs{display:flex;gap:2px;flex-wrap:wrap}
+    21→nav.tabs button{background:transparent;border:0;color:var(--muted);padding:8px 13px;border-radius:10px;
+    22→  cursor:pointer;font-family:inherit;font-size:13.5px;transition:.15s}
+    23→nav.tabs button:hover{color:var(--text)}
+    24→nav.tabs button.active{background:var(--card2);color:var(--text)}
+    25→.badge{margin-inline-start:auto;background:var(--accent-soft);color:#34d399;border:1px solid var(--accent-b);
+    26→  padding:6px 12px;border-radius:999px;font-size:12px;white-space:nowrap}
+    27→main{flex:1;width:100%;max-width:1180px;margin:0 auto;padding:20px 16px 44px}
+    28→footer{margin-top:auto;border-top:1px solid var(--border);padding:14px 18px;text-align:center;
+    29→  color:var(--muted);font-size:12.5px;background:var(--card)}
+    30→.tab{display:none}.tab.active{display:block}
+    31→h2{font-size:20px;margin:4px 0 16px}
+    32→h3{font-size:15.5px;margin:0 0 12px}
+    33→.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px;margin-bottom:16px}
+    34→.grid{display:grid;gap:14px}
+    35→.grid.c2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+    36→.grid.c3{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+    37→.grid.c4{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+    38→label.f{display:block;margin-bottom:10px;font-size:13px;color:var(--muted)}
+    39→label.f>b{display:block;margin-bottom:6px;color:var(--text);font-weight:600;font-size:13.5px}
+    40→input[type=text],input[type=number],input[type=password],input[type=datetime-local],select,textarea{
+    41→  width:100%;background:var(--card2);border:1px solid var(--border);color:var(--text);border-radius:10px;
+    42→  padding:9px 12px;font-family:inherit;font-size:13.5px;outline:none}
+    43→input:focus,select:focus,textarea:focus{border-color:var(--accent-b)}
+    44→textarea{resize:vertical;min-height:70px}
+    45→.btn{background:var(--card2);border:1px solid var(--border);color:var(--text);padding:9px 16px;border-radius:10px;
+    46→  cursor:pointer;font-family:inherit;font-size:13.5px;transition:.15s}
+    47→.btn:hover{border-color:var(--accent-b)}
+    48→.btn.primary{background:var(--accent);border-color:var(--accent);color:#04281c;font-weight:700}
+    49→.btn.primary:hover{filter:brightness(1.08)}
+    50→.btn.danger{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.4);color:#f87171}
+    51→.btn.warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.4);color:#fbbf24}
+    52→.btn.sm{padding:5px 10px;font-size:12.5px;border-radius:8px}
+    53→.btn:disabled{opacity:.5;cursor:not-allowed}
+    54→.chip{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 10px;border-radius:999px;
+    55→  border:1px solid var(--border);color:var(--muted)}
+    56→.chip.on{background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.4);color:#4ade80}
+    57→.chip.off{background:rgba(148,163,184,.08)}
+    58→.chip.rec{background:rgba(239,68,68,.14);border-color:rgba(239,68,68,.5);color:#f87171}
+    59→.muted{color:var(--muted)}.small{font-size:12.5px}
+    60→.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    61→.switch{position:relative;display:inline-block;width:42px;height:23px;flex:none}
+    62→.switch input{opacity:0;width:0;height:0}
+    63→.slider{position:absolute;inset:0;background:var(--card2);border:1px solid var(--border);border-radius:999px;
+    64→  transition:.2s;cursor:pointer}
+    65→.slider:before{content:"";position:absolute;height:15px;width:15px;right:3px;top:3px;background:var(--muted);
+    66→  border-radius:50%;transition:.2s}
+    67→.switch input:checked + .slider{background:var(--accent-soft);border-color:var(--accent-b)}
+    68→.switch input:checked + .slider:before{background:var(--accent);transform:translateX(-18px)}
+    69→.setrow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 2px;
+    70→  border-bottom:1px dashed var(--border)}
+    71→.setrow:last-child{border-bottom:0}
+    72→.setrow .lbl{font-size:13.5px}
+    73→.hint{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;
+    74→  border:1px solid var(--border);color:var(--muted);font-size:10px;cursor:help;position:relative;
+    75→  margin-inline-start:6px;flex:none}
+    76→.hint:hover::after{content:attr(data-tip);position:absolute;bottom:135%;right:50%;transform:translateX(50%);
+    77→  background:#0a0e17;border:1px solid var(--border);color:var(--text);padding:9px 11px;border-radius:9px;
+    78→  width:270px;font-size:12px;line-height:1.8;z-index:70;white-space:normal;text-align:right;box-shadow:0 8px 24px rgba(0,0,0,.5)}
+    79→#logfeed{background:#0a0e17;border:1px solid var(--border);border-radius:10px;padding:10px;height:300px;
+    80→  overflow-y:auto;font-size:12px;line-height:1.9;font-family:Consolas,monospace;direction:ltr;text-align:left}
+    81→#logfeed .t{color:#56637d;margin-right:6px}
+    82→#logfeed .warn{color:#fbbf24}#logfeed .error{color:#f87171}
+    83→.logwrap::-webkit-scrollbar,.scroll::-webkit-scrollbar{width:8px}
+    84→.logwrap::-webkit-scrollbar-thumb,.scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
+    85→table{width:100%;border-collapse:collapse;font-size:13px}
+    86→th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--border)}
+    87→th{color:var(--muted);font-weight:600;font-size:12.5px}
+    88→.plat-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;
+    89→  display:flex;flex-direction:column;gap:10px}
+    90→.plat-card .ic{font-size:26px}
+    91→.plat-card .nm{font-weight:700;font-size:15px}
+    92→.hours{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;direction:ltr}
+    93→.hours label{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:11px;color:var(--muted);
+    94→  cursor:pointer;border:1px solid var(--border);border-radius:8px;padding:4px 2px;transition:.15s}
+    95→.hours label:has(input:checked){border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+    96→.hours input{display:none}
+    97→.media-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px}
+    98→.media-item{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:8px;text-align:center}
+    99→.media-item img{width:100%;height:80px;object-fit:cover;border-radius:8px;background:#0a0e17}
+   100→.media-item .fn{font-size:10.5px;color:var(--muted);margin:6px 0;word-break:break-all;direction:ltr;max-height:26px;overflow:hidden}
+   101→.dropzone{border:2px dashed var(--border);border-radius:12px;padding:26px;text-align:center;color:var(--muted);
+   102→  cursor:pointer;transition:.2s}
+   103→.dropzone:hover,.dropzone.drag{border-color:var(--accent);color:var(--accent)}
+   104→details{background:var(--card2);border:1px solid var(--border);border-radius:12px;padding:12px 16px;margin-bottom:10px}
+   105→details summary{cursor:pointer;font-weight:700;font-size:14px}
+   106→details p{color:var(--muted);font-size:13px;line-height:2.1}
+   107→details li{color:var(--muted);font-size:13px;line-height:2.1;margin-bottom:4px}
+   108→.test-res{display:flex;justify-content:space-between;gap:10px;padding:9px 12px;border:1px solid var(--border);
+   109→  border-radius:10px;margin-bottom:8px;font-size:13px;align-items:center}
+   110→.test-res .ok{color:#4ade80}.test-res .bad{color:#f87171}
+   111→.hidden{display:none !important}
+   112→#toast{position:fixed;bottom:20px;right:20px;z-index:100;display:flex;flex-direction:column;gap:8px}
+   113→.toast{background:var(--card2);border:1px solid var(--accent-b);color:var(--text);padding:11px 18px;
+   114→  border-radius:11px;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.45);animation:tin .25s}
+   115→.toast.err{border-color:rgba(239,68,68,.5)}
+   116→@keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+   117→.stat{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:16px;text-align:center}
+   118→.stat .v{font-size:26px;font-weight:800;color:var(--accent)}
+   119→.stat .k{font-size:12.5px;color:var(--muted);margin-top:4px}
+   120→.divider{height:1px;background:var(--border);margin:14px 0}
+   121→.stgroup{margin:16px 0 4px;padding:7px 13px;background:var(--accent-soft);border:1px solid var(--accent-b);
+   122→  border-radius:9px;font-size:13px;font-weight:700;color:#34d399}
+   123→.warnlbl{color:#fbbf24!important}
+   124→kbd{background:var(--card2);border:1px solid var(--border);border-radius:6px;padding:1px 7px;font-size:11.5px}
+   125→@media (max-width:760px){.hours{grid-template-columns:repeat(6,1fr)}}
+   126→</style>
+   127→</head>
+   128→<body>
+   129→
+   130→<header>
+   131→  <div class="brand">🤖 Pars<span>Agent</span></div>
+   132→  <nav class="tabs" id="tabs">
+   133→    <button data-tab="dashboard" class="active">داشبورد</button>
+   134→    <button data-tab="platforms">پلتفرم‌ها</button>
+   135→    <button data-tab="quick">اجرای سریع</button>
+   136→    <button data-tab="sched">زمان‌بندی</button>
+   137→    <button data-tab="media">رسانه‌ها</button>
+   138→    <button data-tab="macro">ضبط ماکرو</button>
+   139→    <button data-tab="settings">تنظیمات</button>
+   140→    <button data-tab="help">راهنما</button>
+   141→  </nav>
+   142→  <div class="badge">🔒 سرور محلی · بدون ارسال داده به بیرون</div>
+   143→</header>
+   144→
+   145→<main>
+   146→
+   147→<!-- ============ داشبورد ============ -->
+   148→<section id="tab-dashboard" class="tab active">
+   149→  <h2>📊 داشبورد</h2>
+   150→  <div class="grid c4" style="margin-bottom:16px">
+   151→    <div class="stat"><div class="v" data-dyn="runs">0</div><div class="k">اجرای امروز</div></div>
+   152→    <div class="stat"><div class="v" data-dyn="success">0</div><div class="k">موفق</div></div>
+   153→    <div class="stat"><div class="v" data-dyn="fail">0</div><div class="k">ناموفق</div></div>
+   154→    <div class="stat"><div class="v" data-dyn="sched">0</div><div class="k">زمان‌بندی فعال</div></div>
+   155→  </div>
+   156→  <div class="grid c2">
+   157→    <div class="card">
+   158→      <h3>🌐 وضعیت پلتفرم‌ها</h3>
+   159→      <div id="dash-plats" class="grid" style="gap:8px"></div>
+   160→    </div>
+   161→    <div class="card">
+   162→      <h3>⏰ زمان‌بندی‌های پیش‌رو</h3>
+   163→      <div id="dash-sched" class="scroll" style="max-height:240px;overflow-y:auto"><span class="muted small">—</span></div>
+   164→      <div class="divider"></div>
+   165→      <h3>▶ آخرین نتیجه</h3>
+   166→      <div id="dash-last" class="small muted">هنوز چیزی اجرا نشده</div>
+   167→    </div>
+   168→  </div>
+   169→  <div class="card">
+   170→    <h3>📜 لاگ زنده</h3>
+   171→    <div id="logfeed" class="logwrap"></div>
+   172→  </div>
+   173→</section>
+   174→
+   175→<!-- ============ پلتفرم‌ها ============ -->
+   176→<section id="tab-platforms" class="tab">
+   177→  <h2>🌐 پلتفرم‌ها</h2>
+   178→  <p class="muted small" style="margin:-8px 0 14px">💡 <b>باز</b> = نشست مرورگر این پلتفرم همین حالا فعال است و دستورها فوراً اجرا می‌شوند · <b>بسته</b> = نشست فعالی نیست و اولین دستور چند ثانیه‌ای مرورگر را با همان پروفایل باز می‌کند. در هر دو حالت، لاگین‌ها و کوکی‌ها در پروفایل ذخیره می‌مانند. (نشانگر هر کارر را نگه دارید تا توضیح کامل را ببینید.)</p>
+   179→  <div class="grid c3" id="plat-grid"></div>
+   180→</section>
+   181→
+   182→<!-- ============ اجرای سریع ============ -->
+   183→<section id="tab-quick" class="tab">
+   184→  <h2>⚡ اجرای سریع</h2>
+   185→  <div class="card">
+   186→    <div class="row" style="align-items:flex-start">
+   187→      <label class="f" style="flex:1;min-width:180px"><b>پلتفرم</b>
+   188→        <select id="qr-platform"></select></label>
+   189→      <label class="f" style="flex:1;min-width:180px"><b>اکشن</b>
+   190→        <select id="qr-action"></select></label>
+   191→    </div>
+   192→    <div id="qr-params" class="row" style="align-items:flex-start"></div>
+   193→    <div class="row">
+   194→      <button class="btn primary" id="qr-run">▶ اجرا</button>
+   195→      <span class="muted small" id="qr-runstate" data-dyn="qrstate"></span>
+   196→    </div>
+   197→  </div>
+   198→  <div class="card hidden" id="qr-result"></div>
+   199→</section>
+   200→
+   201→<!-- ============ زمان‌بندی ============ -->
+   202→<section id="tab-sched" class="tab">
+   203→  <h2>⏰ زمان‌بندی کارهای خودکار</h2>
+   204→  <div class="grid c2" style="align-items:start">
+   205→    <div class="card">
+   206→      <h3>➕ زمان‌بندی جدید</h3>
+   207→      <label class="f"><b>نوع وظیفه <span class="hint" data-tip="اکشن پلتفرم = کارهای آماده (فالو، لایک، پست و ...) · پخش ماکرو = هر ماکروی که در تب «ضبط ماکرو» ذخیره کرده‌اید، خودکار تکرار شود.">؟</span></b>
+   208→        <select id="sch-kind">
+   209→          <option value="action">⚡ اجرای اکشن پلتفرم</option>
+   210→          <option value="macro">🎬 پخش ماکرو</option>
+   211→        </select></label>
+   212→      <label class="f"><b>عنوان</b><input type="text" id="sch-title" placeholder="مثلاً: فالو صبحگاهی اینستاگرام"></label>
+   213→      <div class="row" style="align-items:flex-start">
+   214→        <label class="f" style="flex:1;min-width:150px"><b>پلتفرم</b><select id="sch-platform"></select></label>
+   215→        <label class="f" style="flex:1;min-width:150px" id="sch-action-wrap"><b>اکشن</b><select id="sch-action"></select></label>
+   216→        <label class="f" style="flex:1;min-width:150px" id="sch-macro-wrap"><b>کدام ماکرو؟</b><select id="sch-macro"></select></label>
+   217→      </div>
+   218→      <div id="sch-params" class="row" style="align-items:flex-start"></div>
+   219→      <div class="divider"></div>
+   220→      <label class="f"><b>نوع زمان‌بندی</b>
+   221→        <select id="sch-type">
+   222→          <option value="interval">تکرارشونده — هر چند دقیقه یک‌بار</option>
+   223→          <option value="daily">روزانه — در ساعت‌های مشخص</option>
+   224→          <option value="once">یک‌بار — در تاریخ و ساعت مشخص</option>
+   225→        </select></label>
+   226→      <div id="sch-timing"></div>
+   227→      <div class="divider"></div>
+   228→      <label class="f" id="sch-pacing"><b>فاصله بین زیر-اکشن‌ها (ثانیه) <span class="hint" data-tip="وقتی یک کار چندتایی است (مثل فالو ۵ نفر)، بین هر کدام این فاصلهٔ تصادفی رعایت می‌شود تا رفتار طبیعی به نظر برسد.">؟</span></b>
+   229→        <div class="row">
+   230→          <input type="number" id="sch-dmin" placeholder="حداقل" style="flex:1" min="1">
+   231→          <input type="number" id="sch-dmax" placeholder="حداکثر" style="flex:1" min="1">
+   232→          <button class="btn sm warn" id="sch-safe">🛡 پیشنهاد ایمن</button>
+   233→        </div></label>
+   234→      <button class="btn primary" id="sch-save" style="width:100%">💾 ذخیره زمان‌بندی</button>
+   235→    </div>
+   236→    <div class="card">
+   237→      <h3>🛡 راهنمای طبیعی جلوه دادن</h3>
+   238→      <label class="f"><b>پلتفرم</b><select id="guide-platform"></select></label>
+   239→      <div id="guide-box"></div>
+   240→    </div>
+   241→  </div>
+   242→  <div class="card">
+   243→    <h3>📋 زمان‌بندی‌های ذخیره‌شده</h3>
+   244→    <div id="sch-list" class="scroll" style="max-height:420px;overflow-y:auto"><span class="muted small">هنوز زمان‌بندی‌ای ندارید</span></div>
+   245→  </div>
+   246→</section>
+   247→
+   248→<!-- ============ رسانه‌ها ============ -->
+   249→<section id="tab-media" class="tab">
+   250→  <h2>🖼 رسانه‌ها (برای انتشار عکس/استوری/پست)</h2>
+   251→  <div class="card">
+   252→    <div class="dropzone" id="dz">
+   253→      <div style="font-size:30px">📤</div>
+   254→      <div><b>فایل‌ها را اینجا رها کنید</b> یا کلیک کنید</div>
+   255→      <div class="small" style="margin-top:4px">عکس و ویدیو — برای پست/استوری/توییت استفاده می‌شود</div>
+   256→      <input type="file" id="dz-input" multiple accept="image/*,video/*" class="hidden">
+   257→    </div>
+   258→  </div>
+   259→  <div class="card">
+   260→    <h3>📚 فایل‌های بارگذاری‌شده <span class="chip" id="media-count">0</span></h3>
+   261→    <div class="media-grid" id="media-grid"></div>
+   262→  </div>
+   263→</section>
+   264→
+   265→<!-- ============ ضبط ماکرو ============ -->
+   266→<section id="tab-macro" class="tab">
+   267→  <h2>🎬 ضبط ماکرو</h2>
+   268→  <div class="card">
+   269→    <p class="muted small" style="margin-top:0">ضبط فقط با دکمهٔ «شروع ضبط» فعال می‌شود و با بالا آمدن سرور <b>خودکار شروع نمی‌شود</b>. بعد از شروع، در پنجرهٔ مرورگر هر کاری انجام دهید (کلیک‌ها و تایپ‌ها) ضبط می‌شود.</p>
+   270→    <div class="row">
+   271→      <label class="f" style="flex:1;min-width:160px;max-width:260px"><b>پلتفرم</b><select id="mc-platform"></select></label>
+   272→      <span class="chip" id="mc-chip" data-dyn="macro">● غیرفعال</span>
+   273→      <span class="chip" data-dyn="macroevents">۰ رخداد</span>
+   274→    </div>
+   275→    <div class="row">
+   276→      <button class="btn danger" id="mc-start">🔴 شروع ضبط</button>
+   277→      <input type="text" id="mc-name" placeholder="نام ماکرو (مثل: استوری-گذاشتن)" style="width:220px">
+   278→      <button class="btn warn" id="mc-stop">⏹ توقف و ذخیره</button>
+   279→    </div>
+   280→  </div>
+   281→  <div class="card">
+   282→    <h3>💾 ماکروهای ذخیره‌شده</h3>
+   283→    <p class="muted small" style="margin-top:0">با «▶ اجرا» یک‌بار پخش می‌شود؛ با «📅 زمان‌بندی» پخشش خودکار می‌شود — تکرارشونده (هر چند دقیقه)، روزانه (ساعت‌های مشخص) یا یک‌بار، با جیتر و مکث شبانه.</p>
+   284→    <div id="mc-list" class="scroll" style="max-height:320px;overflow-y:auto"></div>
+   285→  </div>
+   286→</section>
+   287→
+   288→<!-- ============ تنظیمات ============ -->
+   289→<section id="tab-settings" class="tab">
+   290→  <h2>⚙ تنظیمات</h2>
+   291→
+   292→  <div class="card">
+   293→    <h3>🧪 تست بات</h3>
+   294→    <p class="muted small" style="margin-top:0">یک مرورگر با پروفایل همان پلتفرم باز می‌کند و بررسی می‌کند ردپای ربات مخفی مانده است یا نه. جزئیات کامل در تب «راهنما».</p>
+   295→    <div class="row">
+   296→      <select id="tb-platform" style="max-width:220px"></select>
+   297→      <button class="btn primary" id="tb-run">🧪 اجرای تست بات</button>
+   298→    </div>
+   299→    <div id="tb-result" style="margin-top:12px"></div>
+   300→  </div>
+   301→
+   302→  <div class="card">
+   303→    <h3>🖥 عمومی</h3>
+   304→    <div class="setrow"><span class="lbl">اجرای مرورگر در پس‌زمینه (headless) <span class="hint" data-tip="خاموش = پنجرهٔ واقعی مرورگر باز می‌شود (پیشنهادی و طبیعی‌تر). روشن = بدون پنجره، ولی بیشتر شناسایی می‌شوید و برای ورود/کپچا مناسب نیست.">؟</span></span><label class="switch"><input type="checkbox" id="set-headless"><span class="slider"></span></label></div>
+   305→    <div class="setrow"><span class="lbl">مرورگر ترجیحی <span class="hint" data-tip="auto = اول Edge بعد Chrome بعد Chromium امتحان می‌شود.">؟</span></span>
+   306→      <select id="set-channel" style="max-width:160px"><option value="auto">خودکار</option><option value="msedge">Edge</option><option value="chrome">Chrome</option></select></div>
+   307→    <div class="setrow"><span class="lbl">پروکسی <span class="hint" data-tip="مثلاً http://127.0.0.1:8080 — خالی یعنی بدون پروکسی.">؟</span></span><input type="text" id="set-proxy" placeholder="خالی" style="max-width:280px"></div>
+   308→  </div>
+   309→
+   310→  <div class="card">
+   311→    <h3>🥷 ضد شناسایی بات — پیشرفته <span class="chip on">۱۹ ماژول · متد روز دنیا</span></h3>
+   312→    <p class="muted small" style="margin-top:0">بر اساس متدهای مدرن: <b>اثر انگشت پایدار</b> — هر پروفایل یک «سیستم مشخص» ثابت دارد؛ چون نویزی که هر بار عوض شود، خودش توسط سیستم‌های ضد ربات (CreepJS و هم‌قبیلانش) لو می‌رود. برای جزئیات هر گزینه روی «؟» بروید و کل توضیح‌ها در تب «راهنما» هست.</p>
+   313→    <div class="setrow"><span class="lbl"><b>فعال‌سازی کلی</b> <span class="hint" data-tip="کل مجموعهٔ ضد شناسایی را روشن/خاموش می‌کند — حتماً روشن بماند.">؟</span></span><label class="switch"><input type="checkbox" id="st-enabled"><span class="slider"></span></label></div>
+   314→    <div class="setrow"><span class="lbl">سطح سریع <span class="hint" data-tip="پایه = فقط ضروری‌ها (سریع‌ترین) · استاندارد = تعادل امنیت/سرعت (توصیه‌شده) · حداکثر = همهٔ ماژول‌ها + تایپ کندتر. بعد از اعمال، تک‌تک را می‌توانید دستی تغییر دهید.">؟</span></span>
+   315→      <div class="row">
+   316→        <button class="btn sm" type="button" data-level="basic">🥉 پایه</button>
+   317→        <button class="btn sm warn" type="button" data-level="standard">🥈 استاندارد (توصیه)</button>
+   318→        <button class="btn sm danger" type="button" data-level="max">🥇 حداکثر</button>
+   319→      </div></div>
+   320→
+   321→    <div class="stgroup">🪪 گروه ۱ — هویت مرورگر</div>
+   322→    <div class="setrow"><span class="lbl">مخفی کردن navigator.webdriver <span class="hint" data-tip="مهم‌ترین نشانهٔ ربات بودن؛ حتماً روشن بماند.">؟</span></span><label class="switch"><input type="checkbox" id="st-webdriver"><span class="slider"></span></label></div>
+   323→    <div class="setrow"><span class="lbl">زبان‌های مرورگر فارسی <span class="hint" data-tip="لیست زبان‌ها را fa-IR, fa, en نشان می‌دهد — با زبان واقعی سیستم شما هماهنگ است.">؟</span></span><label class="switch"><input type="checkbox" id="st-langs"><span class="slider"></span></label></div>
+   324→    <div class="setrow"><span class="lbl">شبیه‌سازی پلاگین‌ها <span class="hint" data-tip="مرورگرهای عادی ۵ پلاگین PDF دارند؛ مرورگر خودکار صفر — همین تفاوت قدیمی‌ترین شکارچین بات‌هاست.">؟</span></span><label class="switch"><input type="checkbox" id="st-plugins"><span class="slider"></span></label></div>
+   325→    <div class="setrow"><span class="lbl">window.chrome کامل (runtime/app) <span class="hint" data-tip="مرورگر واقعی همیشه window.chrome.runtime و app و loadTimes دارد؛ نبود یا ناقص بودنش نشانهٔ اتوماسیون است.">؟</span></span><label class="switch"><input type="checkbox" id="st-chrome"><span class="slider"></span></label></div>
+   326→    <div class="setrow"><span class="lbl">تعمیر مجوزها (Permissions API) <span class="hint" data-tip="پرس‌وجوی مجوز نوتیفیکیشن را مثل یک کاربر واقعی جواب می‌دهد، نه حالت تعلیق‌شدهٔ ربات.">؟</span></span><label class="switch"><input type="checkbox" id="st-perm"><span class="slider"></span></label></div>
+   327→    <div class="setrow"><span class="lbl">حذف Headless از User-Agent <span class="hint" data-tip="اگر مجبور به حالت بدون رابط شده‌اید، حداقل کلمهٔ Headless از UA پاک می‌شود.">؟</span></span><label class="switch"><input type="checkbox" id="st-uafix"><span class="slider"></span></label></div>
+   328→    <div class="setrow"><span class="lbl">جعل UA دلخواه <span class="hint" data-tip="پیش‌فرض خاموش بماند — چون از مرورگر واقعی (Edge/Chrome) استفاده می‌کنیم، UA خودش واقعی است و جعل UA فقط وقتایی لازم می‌شود که headless روشن است. جعل بد حتی مضر است (تناقض با سایر مشخصه‌ها).
+   329→">؟</span></span><label class="switch"><input type="checkbox" id="st-ua"><span class="slider"></span></label></div>
+   330→    <div class="setrow hidden" id="st-ua-row"><span class="lbl">متن UA سفارشی</span><input type="text" id="st-ua-val" placeholder="Mozilla/5.0 (Windows NT 10.0; Win64; x64)..." style="max-width:340px;direction:ltr"></div>
+   331→
+   332→    <div class="stgroup">🧬 گروه ۲ — اثر انگشت دیجیتال (پایدار)</div>
+   333→    <div class="setrow"><span class="lbl">پوشاندن کارت گرافیک (WebGL) <span class="hint" data-tip="به‌جای مدل واقعی، یکی از رندررهای واقع‌نمای ANGLE (اینتل/انویدیا/AMD) نشان می‌دهد — برای هر پروفایل ثابت انتخاب می‌شود.">؟</span></span><label class="switch"><input type="checkbox" id="st-webgl"><span class="slider"></span></label></div>
+   334→    <div class="setrow"><span class="lbl">نویز پایدار Canvas <span class="hint" data-tip="اثر انگشت تصویری با یک جابجایی پیکسلِ ثابت (برگرفته از seed پروفایل) تغییر می‌کند و بین اجراها همان می‌ماند — نه هر بار یک عدد تصادفی، چون آن‌طور CreepJS فوراً می‌فهمد تقلب شده.">؟</span></span><label class="switch"><input type="checkbox" id="st-canvas"><span class="slider"></span></label></div>
+   335→    <div class="setrow"><span class="lbl">نویز صدا (AudioContext) <span class="hint" data-tip="اثر انگشت صوتی را با یک نویز بسیار ریزِ پایدار تغییر می‌دهد.">؟</span></span><label class="switch"><input type="checkbox" id="st-audio"><span class="slider"></span></label></div>
+   336→    <div class="setrow"><span class="lbl">ماسک فونت‌ها <span class="hint" data-tip="شمارش فونت‌ها را کنترل می‌کند: فونت‌های رایج ویندوز = «دارد»، فونت ساختگی = «ندارد» — تا از تعداد و نوع فونت‌ها نتوان شما را یکتا و ربات تشخیص داد.">؟</span></span><label class="switch"><input type="checkbox" id="st-font"><span class="slider"></span></label></div>
+   337→    <div class="setrow"><span class="lbl">مشخصات سخت‌افزار واقع‌نما <span class="hint" data-tip="تعداد هستهٔ CPU و رم از استخر واقعی (۴ تا ۱۶ هسته / ۴ تا ۱۶ گیگ) — برای هر پروفایل ثابت.">؟</span></span><label class="switch"><input type="checkbox" id="st-hw"><span class="slider"></span></label></div>
+   338→    <div class="setrow"><span class="lbl warnlbl">شیلد WebRTC <span class="hint" data-tip="جلوگیری از لو رفتن IP محلی از طریق WebRTC. هشدار: ممکن است تماس صوتی/تصویری تلگرام/بله/روبیکا را به هم بریزد — فقط اگر واقعاً لازم است روشن کنید.
+   339→">؟</span></span><label class="switch"><input type="checkbox" id="st-webrtc"><span class="slider"></span></label></div>
+   340→
+   341→    <div class="stgroup">🧠 گروه ۳ — رفتار انسانی</div>
+   342→    <div class="setrow"><span class="lbl">تایپ انسانی (حرف‌به‌حرف) <span class="hint" data-tip="متن‌ها حرف‌به‌حرف با سرعت متغیر تایپ می‌شوند و گاهی مکث «فکر کردن» می‌کنند — نه یکجا Paste.">؟</span></span>
+   343→      <div class="row" style="flex-wrap:nowrap"><label class="switch"><input type="checkbox" id="st-typing"><span class="slider"></span></label>
+   344→        <select id="st-speed" style="max-width:150px">
+   345→          <option value="fast">سرعت: تند</option>
+   346→          <option value="human" selected>سرعت: انسانی</option>
+   347→          <option value="slow">سرعت: کند (محتاط)</option>
+   348→          <option value="off">سرعت: فوری</option>
+   349→        </select></div></div>
+   350→    <div class="setrow"><span class="lbl">فاصلهٔ تصادفی بین اکشن‌ها <span class="hint" data-tip="قبل از هر کلیک، مکث کوتاه تصادفی.">؟</span></span><label class="switch"><input type="checkbox" id="st-delays"><span class="slider"></span></label></div>
+   351→    <div class="setrow"><span class="lbl">حرکت موس با مسیر منحنی <span class="hint" data-tip="موس به‌جای پرش ناگهانی، با مسیر بازیجی (12 تا 24 گام) روی دکمه‌ها می‌رود — موسِ ربات‌ها خط راست است.">؟</span></span><label class="switch"><input type="checkbox" id="st-mouse"><span class="slider"></span></label></div>
+   352→    <div class="setrow"><span class="lbl">اسکرول تصادفی در صفحات <span class="hint" data-tip="بعد از باز شدن هر صفحه، گاهی کمی اسکرول می‌شود — انسان‌ها صفحه را کامل نمی‌بینند، ربات‌ها هم نباید.">؟</span></span><label class="switch"><input type="checkbox" id="st-scroll"><span class="slider"></span></label></div>
+   353→    <div class="setrow"><span class="lbl">مکث کوتاه پس از هر اکشن <span class="hint" data-tip="بعد از هر کار، لحظه‌ای می‌مانیم و بعد می‌رویم — نه اینکه پشت‌سرهم کاری تمام شود.">؟</span></span><label class="switch"><input type="checkbox" id="st-dwell"><span class="slider"></span></label></div>
+   354→    <div class="setrow"><span class="lbl">مکث شبانه (۱ تا ۷ بامداد) <span class="hint" data-tip="در این ساعات هیچ انسانی فعال نیست؛ زمان‌بندی‌ها اجرا نمی‌شوند و به بعد از سحر موکول می‌شوند.">؟</span></span><label class="switch"><input type="checkbox" id="st-night"><span class="slider"></span></label></div>
+   355→
+   356→    <div class="divider"></div>
+   357→    <label class="f"><b>🧩 گروه ۴ — فعال برای کدام پلتفرم‌ها؟</b>
+   358→      <div class="row" id="st-perplat"></div></label>
+   359→  </div>
+   360→
+   361→  <div class="card">
+   362→    <h3>🔑 ورود خودکار (نام کاربری و رمز)</h3>
+   363→    <p class="muted small" style="margin-top:0">وقتی از دکمهٔ «ورود» استفاده کنید، این اطلاعات در صفحهٔ ورود خودکار تایپ می‌شوند. فایل فقط روی همین سیستم ذخیره می‌شود. رمز خالی بماند یعنی «بدون تغییر».</p>
+   364→    <div class="grid" id="cred-grid"></div>
+   365→    <button class="btn primary" id="cred-save">💾 ذخیره اطلاعات ورود</button>
+   366→  </div>
+   367→
+   368→  <div class="card">
+   369→    <h3>🤖 حل کپچا</h3>
+   370→    <div class="setrow"><span class="lbl"><b>حالت</b></span>
+   371→      <select id="cap-mode" style="max-width:300px">
+   372→        <option value="auto">خودکار — با سرویس حل‌کننده (نیازمند کلید)</option>
+   373→        <option value="notify">اطلاع‌رسانی و انتظار برای حل دستی</option>
+   374→        <option value="off">خاموش — بی‌خیال کپچا</option>
+   375→      </select></div>
+   376→    <div class="setrow"><span class="lbl">سرویس حل‌کننده <span class="hint" data-tip="سرویس‌های پرداختی که کپچا را برایتان حل می‌کنند. کلید API را از سایتشان بخرید و اینجا بگذارید.">؟</span></span>
+   377→      <select id="cap-provider" style="max-width:200px"><option value="2captcha">2Captcha</option><option value="capsolver">CapSolver</option></select></div>
+   378→    <div class="setrow"><span class="lbl">کلید API</span><input type="password" id="cap-key" placeholder="از حساب 2captcha/CapSolver" style="max-width:300px"></div>
+   379→    <div class="setrow"><span class="lbl">مهلت حل دستی (ثانیه)</span><input type="number" id="cap-wait" style="max-width:120px"></div>
+   380→    <p class="muted small">reCAPTCHA و hCaptcha با سرویس حل می‌شوند؛ کپچای پیامکی/OTP را باید خودتان وارد کنید — پنل لاگ‌ها را نشان می‌دهد و صبر می‌کند.</p>
+   381→  </div>
+   382→
+   383→  <button class="btn primary" id="set-save" style="font-size:15px;padding:12px 26px">💾 ذخیره همهٔ تنظیمات</button>
+   384→</section>
+   385→
+   386→<!-- ============ راهنما ============ -->
+   387→<section id="tab-help" class="tab">
+   388→  <h2>📖 راهنمای کامل ParsAgent</h2>
+   389→
+   390→  <div class="card">
+   391→    <details open>
+   392→      <summary>🏠 این سایت چیست؟</summary>
+   393→      <p>این پنل، فرمان‌دهی نرم‌افزار <b>ParsAgent</b> روی سیستم شماست. همه‌چیز <b>روی همان سرور محلی</b> اجرا می‌شود و هیچ داده‌ای به بیرون فرستاده نمی‌شود. شما از اینجا به ۷ پلتفرم (اینستاگرام، توییتر، تلگرام، فیسبوک، لینکدین، بله، روبیکا) دستور می‌دهید تا کارهای تکراری را برایتان انجام دهند.</p>
+   394→    </details>
+   395→    <details>
+   396→      <summary>🚀 شروع سریع</summary>
+   397→      <p>۱) برنامهٔ <kbd>launcher.py</kbd> را اجرا کنید و «اجرای سرور و باز کردن پنل» را بزنید.<br>
+   398→      ۲) در تب <b>پلتفرم‌ها</b> روی «ورود» بزنید تا مرورگر با پروفایل دائمی باز شود.<br>
+   399→      ۳) اولین ورود را دستی انجام دهید (و کپچا/OTP را خودتان). از دفعهٔ بعد پروفایل به یاد دارد.<br>
+   400→      ۴) از <b>اجرای سریع</b> برای کارهای فوری و از <b>زمان‌بندی</b> برای کارهای خودکار استفاده کنید.</p>
+   401→    </details>
+   402→    <details>
+   403→      <summary>🌐 معنی «باز» و «بسته» بودن پلتفرم چیست؟</summary>
+   404→      <p>هر پلتفرم یک <b>نشست مرورگر مستقل با پروفایل خودش</b> دارد (پوشه‌های <kbd>profiles/instagram</kbd> و ...). وضعیت هر کارت یعنی:</p>
+   405→      <ul>
+   406→        <li><b>🟢 باز</b> — پنجرهٔ مرورگر آن پلتفرم همین حالا فعال است؛ دستورها فوراً و بدون تأخیر اجرا می‌شوند. با دکمهٔ «باز کردن» یا اولین دستورِ هر تب دیگر باز می‌شود.</li>
+   407→        <li><b>⚪ بسته</b> — نشست فعالی ندارد؛ اولین دستور چند ثانیه‌ای مرورگر را با همان پروفایل باز می‌کند. با دکمهٔ «بستن» هم بسته می‌شود.</li>
+   408→      </ul>
+   409→      <p>مهم: <b>حتی وقتی بسته است</b>، لاگین‌ها، کوکی‌ها و اثر انگشت پایدار آن پلتفرم در پروفایل ذخیره‌مانده‌اند؛ باز شدن دوباره مثل «برگشتن همان کاربر قبلی» است، نه یک کاربر جدید.</p>
+   410→    </details>
+   411→    <details>
+   412→      <summary>🧪 دکمهٔ «تست بات» چه کار می‌کند؟</summary>
+   413→      <p>تست بات یک مرورگر با همان پروفایل پلتفرم انتخابی باز می‌کند و <b>ردپای ربات بودن</b> را می‌سنجد:</p>
+   414→      <ul>
+   415→        <li><b>راه‌اندازی مرورگر</b> — آیا اصلاً مرورگر با پروفایل دائمی باز می‌شود؟</li>
+   416→        <li><b>navigator.webdriver</b> — مهم‌ترین نشانهٔ ربات. باید «undefined / false» باشد.</li>
+   417→        <li><b>زبان‌های مرورگر</b> — باید شامل fa-IR باشد.</li>
+   418→        <li><b>پلاگین‌ها</b> — مرورگر معمولی ۵ پلاگین PDF دارد؛ ربات خالی.</li>
+   419→        <li><b>window.chrome کامل</b> — نبود یا ناقص بودنش نشانهٔ اتوماسیون است.</li>
+   420→        <li><b>WebGL</b> — باید یکی از رندررهای واقع‌نمای ANGLE (اینتل/انویدیا/AMD) باشد، نه مدل واقعی شما.</li>
+
+[showing lines 1-420 of 1143; use offset=421 with limit to continue reading]

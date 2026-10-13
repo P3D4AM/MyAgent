@@ -1,0 +1,324 @@
+     1→# Worklog — پروژه «پارس‌ایجنت» (ParsAgent)
+     2→
+     3→پروژه: ساخت ایجنت اتوماسیون ویندوز (کنترل موس/کیبورد + ضبط ماکرو + اتوماسیون مرورگر با Playwright) به‌همراه پنل وب معرفی/کنترل در Next.js
+     4→
+     5→- تاریخ شروع: 2025 (Asia/Tehran)
+     6→- محیط: Next.js 16 + TypeScript + Tailwind 4 + shadcn/ui — پورت 3000 (dev server در حال اجراست)
+     7→
+     8→---
+     9→Task ID: 0
+    10→Agent: main-orchestrator (Z.ai Code)
+    11→Task: برنامه‌ریزی و راه‌اندازی پروژه
+    12→
+    13→Work Log:
+    14→- بررسی ساختار پروژه (package.json، src/app، components/ui)
+    15→- تأیید اجرای dev server (پورت 3000، بدون خطا در dev.log)
+    16→- مشخص شدن وابستگی‌های موجود: react-syntax-highlighter، framer-motion، lucide-react، shadcn کامل
+    17→
+    18→Stage Summary:
+    19→- معماری نهایی: (۱) پوشه `agent/` شامل سورس کامل ایجنت پایتون برای ویندوز (۲) دو API روت برای مرور کد و دانلود ZIP (۳) صفحه تک‌صفحه‌ای فارسی RTL به‌عنوان پنل معرفی/دمو
+    20→- نام محصول: ParsAgent (پارس‌ایجنت) نسخه ۱.۰.۰
+    21→
+    22→---
+    23→Task ID: 1
+    24→Agent: main-orchestrator (Z.ai Code)
+    25→Task: نوشتن سورس کامل ایجنت ویندوز (Python) در پوشه agent/
+    26→
+    27→Work Log:
+    28→- ایجاد ساختار agent/ شامل core/ ، platforms/ ، tasks/ ، macros/ ، data/ ، assets/
+    29→- core/logger.py — لاگ رنگی rich + فایل چرخشی logs/agent.log
+    30→- core/system_controller.py — کنترل موس/کیبورد واقعی با PyAutoGUI (jitter انسانی، failsafe، تطبیق تصویری)
+    31→- core/input_recorder.py — ضبط ورودی با pynput (F9 ذخیره/F10 لغو) + MacroPlayer بازپخش با سرعت دلخواه
+    32→- core/browser_engine.py — موتور Playwright: پروفایل ماندگار، تزریق STEALTH_JS (حذف navigator.webdriver و...)، تایپ انسانی، retry ناوبری، اسکرین‌شات خطا، export/import سشن
+    33→- core/task_engine.py — موتور تسک JSON با انواع گام platform/browser/desktop/wait/notify/shell + متغیر {{var}} + retry
+    34→- core/scheduler.py — زمان‌بندی every/daily با jitter
+    35→- core/gateway_client.py — کلاینت WebSocket کنترل از راه دور (hello/telemetry/log/result)
+    36→- core/notify.py — اعلان toast ویندوز با plyer
+    37→- platforms/: base + instagram + twitter + telegram + facebook + linkedin + بله + روبیکا + ایتا (هرکدام با login + اکشن‌های اصلی و سلکتورهای چندگانه fallback)
+    38→- main.py — CLI کامل: platforms / login / run / record / play / schedule / demo / gateway
+    39→- config.json ، requirements.txt ، build.bat (PyInstaller) ، tasks/examples.json (۵ تسک نمونه) ، README.md فارسی کامل
+    40→
+    41→Stage Summary:
+    42→- کل سورس ایجنت در /home/z/my-project/agent (۲۰+ فایل پایتون/JSON)
+    43→- اعتبارسنجی: python3 -m py_compile همه فایل‌ها OK ، JSONها OK
+    44→- نصب adm-zip برای API دانلود ZIP در مرحله بعد
+    45→
+    46→---
+    47→Task ID: 2
+    48→Agent: main-orchestrator (Z.ai Code)
+    49→Task: APIهای بک‌اند برای مرور سورس و دانلود ZIP
+    50→
+    51→Work Log:
+    52→- نصب adm-zip + @types/adm-zip
+    53→- GET /api/agent/files — خواندن بازگشتی پوشه agent/ با مرتب‌سازی منطقی (main → README → core → platforms → tasks)، خروجی {stats, files[{path,name,dir,language,size,lines,content}]}
+    54→- GET /api/download — تولید ZIP پویا (pars-agent-v1.0.0.zip) از پوشه agent/ با adm-zip؛ رد کردن __pycache__
+    55→- تست: files=25 ، lines=3018 ، ZIP=44KB/34 entry — هر دو OK
+    56→
+    57→Stage Summary:
+    58→- قرارداد API آماده است؛ فرانت‌اند باید /api/agent/files را در بخش «مرورگر سورس» و /api/download را در دکمه دانلود صدا بزند
+    59→
+    60→---
+    61→Task ID: 3
+    62→Agent: full-stack-developer
+    63→Task: ساخت کامل فرانت‌اند تک‌صفحه‌ای فارسی RTL (پنل معرفی + دموی زنده پارس‌ایجنت)
+    64→
+    65→Work Log:
+    66→- نصب @types/react-syntax-highlighter برای code viewer
+    67→- layout.tsx: تبدیل به `lang="fa" dir="rtl"`؛ حذف next/font (Geist)؛ افزودن preconnect + stylesheet گوگل‌فونت (Vazirmatn + JetBrains Mono) در head؛ متادیتای فارسی؛ Toaster از sonner با theme=dark و dir=rtl
+    68→- globals.css: فونت‌ساخت‌های `--font-sans`/`--font-mono` روی Vazirmatn/JetBrains Mono؛ کل توکن‌های shadcn به پالت dark mission-control (zinc-950/900/800 + emerald-500 primary + zinc text) — بدون indigo/blue؛ کلاس‌های سفارشی: text-gradient (emerald→amber)، bg-grid، glow، scrollbar-thin، cursor-blink؛ scroll-behavior smooth
+    69→- data.ts: کاتالوگ ۸ پلتفرم × اکشن‌ها (با فیلدهای شرطی text/target/image)، buildScript با اسکریپت‌ساز تمپلیتی برای هر kind اکشن در دو موتور browser/desktop (خطای شبکه → retry قطعی، weight-based pacing، خطوط typing انیمیشنی)؛ faDigits/faNumber/logTimestamp؛ fetchAgentFiles با کش ماژول‌سطحی
+    70→- کامپوننت‌ها در src/components/agent: header (sticky + backdrop-blur + Sheet موبایل + دکمه دانلود واقعی /api/download)، hero (bg-grid + glow + گرادیان + ۴ آمار + ترمینال)، terminal (TerminalWindow مشترک macOS-style + HeroTerminal با ماشین حالت تایپ async، loop بی‌نهایت، prefers-reduced-motion)، log-line (رنگ تگ‌ها: playwright=amber، platforms=emerald، desktop=orange، scheduler=yellow، notify=lime + مارکرهای ✓/!/✗)، features (۶ کارت)، engines (۲ کارت با badge «پیشنهادی»)، platforms (۸ کارت + چیپ‌های اکشن + هشدار amber)، demo (فرم کامل + موتور اجرای لاگ با progress/timer/step-counter/typing-line/stop/clear + toast موفقیت + بنر موفقیت فارسی)، recorder-demo (ضبط واقعی pointermove با throttle 30ms، بازپخش rAF با interpolation و سرعت 1.5x، مسیر SVG polyline + مارکرهای کلیک ping + شمارنده زنده — سازگار با قانون react-hooks/refs با flush state)، architecture (دیاگرام لایه‌ای با framer-motion whileInView + کارت جریان داده)، code-viewer (fetch + درخت فایل گروه‌بندی‌شده sidebar دسکتاپ / Select موبایل + Prism oneDark با شماره خط + کپی + skeleton + error/retry + نوار آمار fa-IR)، install-guide (۴ گام + Accordion شامل EXE/کلیدهای ضبط/CLI + هشدار مسئولانه)، download-section (کارت گرادیان emerald→amber + دکمه ZIP + آمار API)، footer (۳ ستون + sticky-bottom با mt-auto)
+    71→- page.tsx: ترکیب همه سکشن‌ها در wrapper `min-h-screen flex flex-col` با footer mt-auto
+    72→- تست مرورگر (agent-browser): صفحه بدون error/hydration-error لود شد؛ دموی زنده اجرا شد تا بنر «موفق» و toast؛ code-viewer با ۲۵ فایل رندر شد؛ ضبط‌کننده ضبط/بازپخش واقعی کار کرد؛ منوی Sheet موبایل OK؛ اسکرین‌شات full-page: پیکسل‌های emerald موجود، پیکسل blue-dominant صفر
+    73→- `bun run lint` بدون هیچ error/warning؛ dev.log بدون خطای کامپایل
+    74→
+    75→Stage Summary:
+    76→- فرانت‌اند کامل فارسی RTL با پالت emerald/amber/zinc آماده است در `/` (پورت 3000)
+    77→- همهٔ مسیرهای فایل: src/app/{layout,page,globals.css} + ۱۵ فایل در src/components/agent/ (data, log-line, section-header, copy-button, terminal, header, hero, features, engines, platforms, platform-icons, demo, recorder-demo, architecture, code-viewer, install-guide, download-section, footer)
+    78→- APIهای Task 2 بدون تغییر مصرف شدند (GET /api/agent/files و GET /api/download)
+    79→- دمو کاملاً تعاملی است: انتخاب پلتفرم/اکشن/موتور/سرعت/خطای شبکه + لاگ واقع‌گرایانه با progress bar و زمان‌سنج؛ ضبط‌کننده ماکرو مرورگر نیز واقعی است
+    80→- انحراف کوچک از spec: Toaster نهایی از sonner استفاده کرد (نه toast قدیمی shadcn) چون دمو toast.success سانری لازم داشت؛ علامت‌های ✓ در خطوط لاگ به‌صورت prefix (طبق بخش icons) رندر می‌شوند نه suffix
+    81→
+    82→---
+    83→Task ID: 4
+    84→Agent: main-orchestrator (Z.ai Code)
+    85→Task: بررسی نهایی با agent-browser + VLM و رفع خطاها
+    86→
+    87→Work Log:
+    88→- باز کردن / با agent-browser: عنوان فارسی درست، صفر خطای کنسول/hydration
+    89→- تحلیل بصری ۶ اسکرین‌شات با VLM (بالا/میانی/موبایل/منو/فوتر/بخش‌های پایانی): RTL درست، بدون رنگ آبی/نیلی، بدون شکستگی
+    90→- تست مسیر طلایی دمو: انتخاب اینستاگرام + انتشار عکس + اجرا → لاگ استریم واقعی، نوار پیشرفت، بنر «تسک با موفقیت در ۱۱٫۴ ثانیه اجرا شد — ۱۴ از ۱۴ گام» ✓
+    91→- تست ضبط‌کننده: شروع ضبط → حرکت موس داخل کارد → ۱۳ رخداد ثبت → بازپخش با نقطه متحرک و مسیر SVG polyline (۱۳ نقطه) ✓
+    92→- تست مرورگر سورس: کلیک روی core/browser_engine.py → کد با شماره خط و هایلایت رندر شد ✓
+    93→- باگ پیدا شده: سرریز افقی ۸px در موبایل (390px) از عناصر glow تزئینی (-inset-6 blur-2xl در hero و download)
+    94→- رفع: افزودن `overflow-x: clip` برای html/body در globals.css → scrollWidth=390=clientWidth ✓
+    95→- تست منوی موبایل (Sheet): تمام لینک‌ها + دکمه دانلود ✓ — الگوی فوتر چسبان (min-h-screen flex-col + mt-auto) تأیید شد
+    96→- bun run lint: بدون خطا — dev.log: بدون خطا
+    97→
+    98→Stage Summary:
+    99→- همه جریان‌های کلیدی در مرورگر واقعی تأیید شدند: دموی تسک، ضبط/بازپخش ماکرو، مرورگر کد، دانلود ZIP (curl 200)، واکنش‌گرایی موبایل/دسکتاپ، فوتر چسبان
+   100→- یک باگ رفع شد: سرریز افقی موبایل
+   101→- پروژه کامل و آماده تحویل است
+   102→
+   103→---
+   104→Task ID: 5
+   105→Agent: main-orchestrator (Z.ai Code)
+   106→Task: پیاده‌سازی پیشنهاد معماری — لانچر مقاوم مرورگر (msedge → chrome → chromium) + پروفایل مستقل هر پلتفرم + رفع خطای 403 تحریمی
+   107→
+   108→Work Log:
+   109→- بازنویسی core/browser_engine.py:
+   110→  * FALLBACK_CHANNELS = ("msedge", "chrome", "chromium") — قابل‌تنظیم از config.json (browser.channel اجبار یکی / browser.channel_fallbacks ترتیب دلخواه)
+   111→  * کلاس BrowserLaunchError با پیام راهنمای فارسی (۳ راه‌حل: Edge نصب‌شده / آینه / پروکسی) + گزارش خطای هر کانال
+   112→  * چند-پروفایلی: self._contexts به‌ازای هر پلتفرم (data/profiles/<platform>)، متد use_profile() با لانچ تنبل، پراپرتی _context با auto-open پروفایل main
+   113→  * start(headless, profile, lazy) — lazy برای TaskEngine تا کانتکست فقط با اولین گام پلتفرمی باز شود
+   114→  * بگ‌فیکس: __enter__ دیگر start را دوبار صدا نمی‌زند؛ import_session واقعاً کوکی‌ها را add_cookies می‌کند (قبلاً فقط export می‌کرد)
+   115→- core/task_engine.py: platform() حالا قبل از هر استفاده use_profile(name) را صدا می‌زند → new_page() همیشه در کانتکست همان پلتفرم باز می‌شود
+   116→- main.py:
+   117→  * build_engines → browser_factory با lazy=True
+   118→  * cmd_login → start(profile=args.platform) + نمایش کانال/پروفایل در خروجی؛ try/finally به‌جای with دابل-استارت
+   119→  * دستور جدید install: ست کردن PLAYWRIGHT_DOWNLOAD_HOST روی cdn.npmmirror.com و اجرای python -m playwright install (--browser/--mirror)
+   120→  * قالب پیش‌فرض config.json با channel/channel_fallbacks؛ docstring به‌روز
+   121→- فایل جدید agent/install_browsers.bat — نصب کرومیوم از آینه npmmirror (بدون فیلترشکن) با توضیح «اگر Edge/Chrome دارید اصلاً لازم نیست»
+   122→- config.json: افزودن "channel": null و "channel_fallbacks": ["msedge","chrome","chromium"]
+   123→- requirements.txt: کامنت هدر درباره لانچر مقاوم و دو روش نصب آینه‌ای
+   124→- README.md: جدول امکانات (لانچر مقاوم + پروفایل هر پلتفرم)، بخش کامل «نصب مرورگر در ایران — رفع خطای 403» با جدول ۳ راه‌حل، نصب ۴-گامی جدید، ردیف‌های عیب‌یابی (403 و crash پروفایل بعد از تعویض موتور)، python main.py install در استفاده سریع
+   125→- فرانت‌اند هم‌گام با واقعیت:
+   126→  * install-guide.tsx: گام ۳ → «نصب مرورگر — معمولاً لازم نیست!» با install_browsers.bat / python main.py install و نوت لانچر مقاوم؛ CLI accordion با install
+   127→  * engines.tsx: بولت «لانچر مقاوم: Edge ← Chrome ← کرومیوم» و «پروفایل ماندگار جدا برای هر پلتفرم» + چیپ «حتی زیر تحریم»
+   128→  * data.ts و terminal.tsx: خطوط لاگ دمو/هیرو به «resilient launch — trying: msedge → chrome → chromium» و «channel=msedge up (installed Edge — no download needed)» و profile=<platform>
+   129→- اعتبارسنجی:
+   130→  * python3 -m py_compile همه ۲۰ فایل پایتون OK؛ JSONها OK؛ اسکریپت AST: ۲۲ متد BrowserEngine، توکن‌های کلیدی و wiring (use_profile, cmd_install, PLAYWRIGHT_DOWNLOAD_HOST, lazy=True, profile=args.platform) تأیید
+   131→  * bun run lint بدون خطا
+   132→  * API: files=26 (قبلاً 25) و lines=3263؛ ZIP=49,585B با 35 entry شامل install_browsers.bat و browser_engine.py جدید
+   133→  * agent-browser: صفر خطای کنسول/هیدریشن؛ رندر متن‌های جدید (install-step، launcher-note، engines-bullet)؛ code-viewer فایل browser_engine.py جدید را با FALLBACK_CHANNELS/msedge/use_profile/BrowserLaunchError نشان داد؛ دموی زنده با لاگ‌های لانچر جدید تا بنر موفقیت و progress 100% اجرا شد؛ ترمینال هیرو «channel=msedge up» را تایپ کرد؛ موبایل 390px بدون سرریز افقی؛ فوتر چسبان درست (در بلندترین صفحه bottom=viewport، در بالای صفحه زیر دید)
+   134→
+   135→Stage Summary:
+   136→- معماری پیشنهادی کامل پیاده و تأیید شد: ParsAgent حالا روی هر ویندوز ۱۰/۱۱ بدون هیچ دانلودی با Edge خود سیستم بالا می‌آید؛ در نبود آن Chrome؛ و در نهایت کرومیوم باندل (نصب از آینه بدون فیلترشکن با install_browsers.bat یا python main.py install)
+   137→- هر پلتفرم پروفایل ماندگار مستقل دارد (data/profiles/<platform>) — لاگین‌ها بین پلتفرم‌ها جدا و ماندگارند
+   138→- خطای 403 تحریمی کاربر به‌صورت معماری‌ای حل شد (نه فقط راهنما): fallback کانال + آینه + مستندسازی
+   139→- دو باگ قدیمی هم رفع شد: دابل-استارت در with، و import_session که export می‌کرد
+   140→- ZIP قابل دانلود از پنل (/api/download) و مرورگر سورس در صفحه، هر دو به‌روز و هم‌گام با سورس جدید
+   141→
+   142→---
+   143→Task ID: 6
+   144→Agent: main-orchestrator (Z.ai Code)
+   145→Task: ساخت «پنل کنترل وب» کاربرپسند برای استفاده از همهٔ قابلیت‌های پارس‌ایجنت (درخواست کاربر: محیط یوزرفرندلی تحت وب)
+   146→
+   147→Work Log:
+   148→- طراحی معماری: ایجنت واقعی پایتون روی ویندوز کاربر است → پنل به «شبیه‌ساز داخلی» متصل می‌شود که همهٔ قابلیت‌ها را وفادارانه شبیه‌سازی می‌کند (رفتار یکسان با python main.py gateway)
+   149→- بک‌اند:
+   150→  * src/lib/panel/types.ts — انواع مشترک سرور/کلاینت (PanelState, PanelTask, MacroEvent, PanelSettings…)
+   151→  * src/lib/panel/store.ts — موتور شبیه‌سازی singleton با globalThis (مقاوم به HMR): tick زمان‌محور (vitals random-walk، فلو ورود پله‌ای، پیشرفت تسک با انتشار لاگ گام‌ها، زمان‌بند every/daily، تولید رخداد ضبط، بازپخش با mouse-path)، dispatch کامل ۲۱ اکشن (launch/closeBrowser/login/logout/createTask/runTask/stopTask/deleteTask/loadSampleTasks/recordStart/recordStop/recordClear/saveMacro/deleteMacro/playMacro/stopPlayback/loadSampleMacro/systemAction/saveSettings/resetSettings/clearLogs)، تولید لاگ تسک با همان buildScript لندینگ (یکدستی کامل خروجی CLI و پنل)
+   152→  * GET /api/panel/state (tick + snapshot) و POST /api/panel/action (dispatch + state در یک round-trip) — هر دو force-dynamic
+   153→- فرانت‌اند (۱۲ فایل در src/components/agent/panel/):
+   154→  * panel-provider.tsx — polling هر ۱.۴ ثانیه (توقف در tab hidden) + dispatch با toast + toast انتقال وضعیت تسک (running→done)
+   155→  * widgets.tsx — StatCard، StatusDot/Badge، Chip، LogStream (auto-scroll هوشمند)، CliHint «معادل در ترمینال» + دکمه کپی، MiniBar، EmptyState، faUptime/faClock
+   156→  * control-panel.tsx — پوستهٔ mission-control: هدر sticky + سایدبار راست RTL (دسکتاپ) / پیل‌های افقی اسکرول (موبایل) + badge تعداد فعال + framer-motion ترنزیشن نماها + نوار وضعیت پایین (mt-auto) + بَج صادقانه «شبیه‌ساز داخلی» با tooltip راهنمای اتصال ایجنت واقعی
+   157→  * overview-view.tsx — ۴ آمار + اجرای سریع ۸ پلتفرم (toggle باز/بسته با tooltip) + vitals زنده (CPU/RAM/mouse/clipboard) + تسک‌های فعال با progress + جریان لاگ زنده
+   158→  * platforms-view.tsx — ۸ کارت: وضعیت مرورگر/سشن/کانال/پروفایل، دکمه‌های اجرا/بستن مرورگر/ورود اول/خروج/اجرای اکشن + چیپ اکشن‌ها + progress فلو ورود
+   159→  * action-runner.tsx — دیالوگ ساخت تسک: انتخاب پلتفرم/اکشن/موتور(browser|desktop)/سرعت انسانی/زمان‌بندی(دستی|هر۵m|۳۰m|۲h|روزانه) + گیت لاگین اینلاین (شروع ورود → progress → فرم خودکار ظاهر می‌شود) + پیش‌نمایش زندهٔ CLI
+   160→  * tasks-view.tsx — لیست تسک با status/progress/گام جاری/runCount/nextRunAt + اجرا/توقف/حذف + CLI هر تسک + بارگذاری ۳ تسک نمونه
+   161→  * recorder-view.tsx — صحنهٔ SVG 1920×1080 با grid + polyline مسیر + مارکرهای کلیک انیمیت + cursor بازپخش interpolate با rAF + لیست رخدادها + کتابخانهٔ ماکرو با سرعت ×0.5–×2 + یادداشت F9/F10 و pynput
+   162→  * system-view.tsx — ۷+ کارت دسکتاپ: اسکرین‌شات (مسیر خروجی)، کلیپ‌بورد خواندن/نوشتن، باز کردن برنامه، ۶ هاتکی آماده، تایپ متن، کلیک مختصات، اعلان ویندوز (toast واقعی وب)، انتظار، قفل + وضعیت زندهٔ موس
+   163→  * logs-view.tsx — فیلتر برچسب (داینامیک) + فیلتر سطح + خروجی .log + پاک‌کردن
+   164→  * settings-view.tsx — ویرایشگر ترتیب fallback chain (بالا/پایین/حذف/افزودن)، headless، پروکسی، اسلایدرهای تأخیر انسانی، gateway، پیش‌نمایش زندهٔ config.json، ذخیره/بازگردانی
+   165→- یکپارچه‌سازی: page.tsx سوییچ نما (landing↔panel) + دکمه «پنل کنترل» در Header (دسکتاپ+موبایل Sheet) + CTA «ورود به پنل کنترل» در Hero
+   166→- رفع باگ حین تست: faDigits از widgets صادر نشده بود → re-export (خطای ESM فقط در مرورگر ظاهر شد، نه در lint)
+   167→- اعتبارسنجی:
+   168→  * bun run lint: صفر خطا/هشدار
+   169→  * agent-browser E2E کامل: ورود پنل از Header ✓، اجرای سریع تلگرام (toast + تغییر دکمه) ✓، ActionRunner → اجرا → jump خودکار به وظایف + badge ✓، تکمیل تسک ۱۹.۷ ثانیه + toast ✓، فلو ورود «بله» کامل شد ✓، ضبط (۳۶ رخداد/۱۹.۴ ثانیه) → ذخیره → بازپخش ×۱.۵ با PLAY % ✓، اسکرین‌شات + اعلان ویندوز ✓، ذخیره تنظیمات ✓، خروج به لندینگ ✓
+   170→  * موبایل 390px: scrollW=clientW (بدون سرریز) + ناوبری پیل ✓؛ فوتر با mt-auto در محتوای بلند push می‌شود ✓
+   171→  * VLM روی ۴ اسکرین‌شات: RTL ✓، متن فارسی سالم ✓، بدون آبی/نیلی (پالت emerald) ✓، چیدمان منظم ✓، بدون شکستگی ✓
+   172→  * dev.log: صفر خطا — فقط GET/POST موفق panel API
+   173→
+   174→Stage Summary:
+   175→- پنل کنترل وب کامل فارسی RTL با ۷ نما (کلی/پلتفرم‌ها/وظایف/ضبط/سیستم/لاگ/تنظیمات) روی همان مسیر / با سوییچ نما — همهٔ قابلیت‌های CLI اکنون با چند کلیک در مرورگر در دسترس است و هر اقدام «معادل ترمینال» خود را با دکمه کپی نشان می‌دهد
+   176→- موتور شبیه‌سازی وفادار: لانچر مقاوم (msedge→chrome→chromium از تنظیمات)، پروفایل ماندگار هر پلتفرم، فلو ورود با ذخیرهٔ سشن، زمان‌بند، ضبط/بازپخش ماکرو، اکشن‌های دسکتاپ — رفتار یکسان با ایجنت واقعی
+   177→- مسیر ارتقا به ایجنت واقعی مستند شده: python main.py gateway + config.json (درگاه در تنظیمات پنل قابل‌مشاهده)
+   178→- باگ رفع‌شده: export گم‌شدهٔ faDigits (۵ فایل درگیر)
+   179→
+   180→---
+   181→Task ID: 7
+   182→Agent: main-orchestrator (Z.ai Code)
+   183→Task: درخواست کاربر — «لانچر/نصب GUI با دکمهٔ اجرای سرور که خودکار پنل وب را باز کند» + پنل واقعی (نه شبیه‌ساز) برای کنترل همهٔ قابلیت‌ها
+   184→
+   185→Work Log:
+   186→- پاسخ به «روی کدوم صفحه»: پنل واقعی هیچ صفحهٔ اینترنتی نیست — روی سیستم خود کاربر روی http://127.0.0.1:8765 اجرا می‌شود
+   187→- معماری: FastAPI محلی (فقط 127.0.0.1) که مستقیماً ماژول‌های واقعی ایجنت را wrap می‌کند + تک‌نخم AgentWorker (چون Playwright sync بین‌نخ امن نیست) + لانچر tkinter
+   188→- agent/server.py (جدید، ~۱۲۰۰ خط):
+   189→  * قلاب لاگ: patch کردن core.logger.get_logger قبل از ایمپورت ماژول‌ها → همهٔ لاگرهای ایجنت (browser/desktop/recorder/tasks/پلتفرم‌ها) به WebSocket پنل استریم می‌شوند
+   190→  * AgentWorker: صف تک‌نخمی برای همهٔ عملیات مرورگری/تسک/پلتفرم
+   191→  * سیستم job با شناسه، وضعیت (running/done/failed/cancelled)، نتیجه، broadcast از WS + قابلیت لغو برای ماکروها
+   192→  * WebRecorder: ضبط pynput با شروع/توقف از وب یا F9/F10 — فرمت ماکرو ۱۰۰٪ سازگار با InputRecorder/MacroPlayer (پخش از CLI هم ممکن)
+   193→  * پخش‌کنندهٔ ماکروی قابل‌لغو + تایپ هوشمند فارسی (ASCII→typewrite، فارسی→کلیپ‌بورد+Ctrl+V) + نگاشت کلیدهای ویژه pynput→pyautogui + مدیریت درست modifierها (keyDown/keyUp)
+   194→  * REST کامل: health/state/platform(open/close/logged_in/screenshot)/action/run/tasks(run/save/content/load_samples)/record(start/stop/status)/macros(save/list/delete/play)/jobs/cancel + system(screenshot/mouse/keyboard/info/notify/open/cmd/lock/shutdown/abort) + config(get/save) + WS /ws/logs + سرو StaticFiles از web/
+   195→  * کاتالوگ اکشن‌های ۸ پلتفرم (از سورس واقعی platforms/ استخراج شد) با فیلدهای فارسی
+   196→- agent/web/index.html (جدید، ~۱۰۹۵ خط): پنل تک‌فایلی فارسی RTL بدون هیچ CDN (سازگار ایران/آفلاین) — ۷ نما: داشبورد/پلتفرم‌ها/وظایف/ضبط/سیستم/لاگ/تنظیمات؛ کلیک روی اسکرین‌شات = کلیک واقعی روی مختصات؛ حالت دمو در نبود سرور؛ فوتر چسبان؛ واکنش‌گرا (موبایل بدون سرریز)
+   197→- agent/launcher.py (جدید): لانچر گرافیکی tkinter — بررسی/نصب پیش‌نیازها (pip با لاگ زنده)، نصب کرومیوم از آینه npmmirror، اجرای uvicorn به‌صورت subprocess (بدون پنجرهٔ کنسول، NO_COLOR)، health-check → باز شدن خودکار پنل در مرورگر، توقف با taskkill /T، لینک پنل قابل کلیک
+   198→- agent/ParsAgent.bat (جدید): دابل‌کلیک → pythonw launcher.py (با fallback به python/py)
+   199→- core/browser_engine.py: افزودن open_profiles() و close_profile() برای پنل
+   200→- requirements.txt: + fastapi/uvicorn/pyperclip؛ README.md: مسیر لانچر به‌عنوان راه اول + فهرست فایل‌های جدید
+   201→- سندباکس: public/panel.html (پیش‌نمایش استاتیک پنل) + install-guide.tsx بازنویسی ۴ گام (لانچر گرافیکی مسیر اصلی) + کارت «پیش‌نمایش پنل» با لینک /panel.html
+   202→- اعتبارسنجی سخت‌گیرانه با هارنس (tests/tmp/agent_harness.py): اجرای واقعی server.py روی لینوکس با stub برای pyautogui/pynput/playwright/plyer:
+   203→  * GET / و /api/health و /api/state → 200؛ ۸ پلتفرم؛ فایل‌های تسک؛ ماژول‌ها
+   204→  * اجرای تسک notify از پنل → job done؛ WebSocket hello + push های job (running→done) + log واقعی موتور
+   205→  * ضبط شروع/توقف؛ ذخیرهٔ ماکرو با رد درستِ خالی؛ پخش ماکروی واقعی (events_played=4) + لغو (cancelled با پیام درست)
+   206→  * tasks/save + content + run file؛ platform/open → پروفایل telegram با channel=msedge در state؛ action/run wired؛ system/cmd + mouse + keyboard(فارسی) + info + config roundtrip همه OK
+   207→  * دو باگ واقعی پیدا و رفع شد: (۱) find_spec روی ماژول بی-spec → ValueError (روی ویندوز هم ممکن بود) — try/except در server و launcher؛ (۲) آرگومان جاافتادهٔ job_id در پخش ماکرو → پارامتر inject_id در _new_job
+   208→- agent-browser E2E: لندینگ بدون خطای کنسول؛ متن‌های جدید install (لانچر/پیش‌نمایش/8765) حاضر؛ /panel.html در حالت دمو: بنر زرد + ۷ تب سالم + ۸ کارت پلتفرم با اکشن‌ها + toast درست دمو؛ موبایل 390px بدون سرریز؛ پنل شبیه‌ساز قبلی بدون رگرسیون
+   209→- VLM روی ۳ اسکرین‌شات: RTL ✓، بدون شکستگی ✓، فوتر چسبان ✓، پالت emerald ✓، بنر + کارت‌ها ✓
+   210→- bun run lint: صفر خطا؛ py_compile همهٔ فایل‌های پایتون OK؛ ZIP دانلود: 43 entry شامل server.py/launcher.py/web/index.html/ParsAgent.bat
+   211→
+   212→Stage Summary:
+   213→- ParsAgent حالا یک «اپ دسکتاپ واقعی» است: دابل‌کلیک ParsAgent.bat → دکمهٔ «اجرای سرور» → پنل کامل در مرورگر (http://127.0.0.1:8765) با کنترل واقعی مرورگرها/تسک‌ها/ضبط/دسکتاپ — همهٔ چیز از سورس قابل دانلود از سایت (ZIP به‌روز)
+   214→- پنل واقعی با شبیه‌ساز سایت متمایز است: پنل سایت فقط دمو است؛ پنل واقعی محلی است و همهٔ قابلیت‌های CLI را از مرورگر در دسترس می‌گذارد
+   215→- فرمت ماکروی پنل = فرمت CLI (سازگاری دوطرفه)؛ لاگ‌های ایجنت به‌صورت زنده در پنل استریم می‌شوند
+   216→- امنیت: سرور فقط روی 127.0.0.1؛ توقف اضطراری با گوشهٔ بالا-چپ موس (FAILSAFE)
+   217→
+   218→---
+   219→Task ID: 8
+   220→Agent: main-orchestrator (Z.ai Code)
+   221→Task: درخواست کاربر — ۱) رفع نوار مزاحم (سرور محلی · بدون ارسال داده به بیرون) که وسط کارت‌های فیسبوک/دو کارت کناری و وسط داشبورد افتاده بود ۲) تنظیمات ضد شناسایی بات برای همهٔ پلتفرم‌ها با آخرین متدها ۳) ذخیرهٔ نام کاربری/رمز در تنظیمات + ورود خودکار + حل خودکار کپچا
+   222→
+   223→Work Log:
+   224→- ریشه‌یابی باگ نوار: `html,body{height:100%}` قدِ body را قفل می‌کرد و `.wrap{flex:1;min-height:0}` اجازه می‌داد محتوای بلند روی فوتر overflow کند → کارت‌ها روی نوار وضعیت می‌افتادند
+   225→- رفع: حذف `html,body{height:100%}` + حذف `min-height:0` از `.wrap` (الگوی درست min-h-screen + mt-auto) در agent/web/index.html + public/panel.html — تأیید هندسی: footerTop=1278 > lastCardBottom=1260، overlap=false، ۸ کارت سالم
+   226→- agent/core/stealth.py (جدید، ~۴۵۰ خط): موتور ضد شناسایی v2 — ۱۰ ماژول JS (webdriver، chrome_runtime کامل با csi/loadTimes، Permissions، پلاگین‌های PDF واقعی ۵تایی + mimeTypes، languages/platform، hw_specs، نویز Canvas LSB، نویز AudioContext، ماسک WebGL با رندررهای ANGLE واقع‌نمای ویندوز، شیلد WebRTC) + سه سطح (basic/standard/max) + `disable_for` پلتفرمی + seed پایدار از نام پروفایل (اثر انگشت بین اجراها ثابت) + webrtc با پروکسی خودکار روشن + PROBE_JS برای تست و evaluate_probe مقاوم
+   227→- agent/core/credentials.py (جدید): مخزن data/credentials.json با FIELDS برای ۸ پلتفرم، merge-semantics (خالی=پاک، None=دست‌نزن)، masked() (رمز هرگز برنمی‌گردد)، fallback به config.json قدیمی، و totp_code با HMAC-SHA1 استاندارد RFC6238 بدون هیچ وابستگی
+   228→- agent/core/captcha.py (جدید، ~۳۰۰ خط): CaptchaSolver سازگار با پروتکل 2captcha/rucaptcha (urllib خالص، multipart برای base64، پول با مهلت) + detect_captcha در صفحه (recaptcha/hcaptcha/turnstile/funcaptcha/کپچای تصویری با استخراج sitekey از data-sitekey/URL/HTML) + solve_page_captcha با تزریق توکن و callback و پُرکردن کپچای تصویری
+   229→- agent/platforms/base.py: LOGIN_SELECTORS برای هر ۸ پلتفرم (user/pass/next/submit/code با کاندیداهای چندگانه) + BasePlatform.auto_login(creds, solver): فلوی کامل — is_logged_in → تایپ کاربر → دکمهٔ بعدی → رمز (secret) → submit/Enter → تشخیص+حل+تزریق کپچا → کد TOTP خودکار یا needs=code (SMS در پنجرهٔ باز) → رد کردن دیالوگ ذخیرهٔ ورود → بررسی نتیجه + export_session
+   230→- agent/core/browser_engine.py: اتصال به stealth.py — args از stealth_launch_args (شامل --disable-blink-features=AutomationControlled) و ctx.add_init_script(build_stealth_js(config, profile)) per-profile + لاگ stealth=✓
+   231→- agent/server.py v1.2.0: اندپوینت‌های جدید POST /api/platform/login، GET/POST /api/credentials (+delete)، POST /api/stealth/probe (تست ۷ نشانه در صفحهٔ محلی file://data/stealth-probe.html)، POST /api/stealth/test (bot.sannysoft.com + browserleaks در پروفایل)؛ state شامل credentials و has_creds در کاتالوگ؛ jobDetail پنل حالت‌های steps/checks دارد
+   232→- agent/web/index.html + public/panel.html: کارت «🛡️ ضد شناسایی بات» (۱۰ سوییچ با توضیح + ۳ سطح + تست سریع با چک‌لیست ✓/✗ + سایت تست) و کارت «🔑 حساب‌ها و ورود خودکار» (چیپ ۸ پلتفرم + فرم چابک username/password/TOTP + کارت کپچا با provider/کلید/auto) و دکمهٔ «⚡ ورود خودکار» در هر کارت پلتفرم + بَج 🔑 حساب؛ استایل‌های جدید sw/modrow/checkrow/chipcred؛ v1.1→v1.2
+   233→- agent/config.json: بخش‌های stealth (level=standard + modules) و captcha؛ data/stealth-probe.html؛ README.md به‌روز (جدول امکانات + بخش‌های «ضد شناسایی v2» و «ورود خودکار و حل کپچا» + عیب‌یابی)
+   234→- اعتبارسنجی:
+   235→  * validate_v12.py: stealth js تولید/seed/disable_for/پروکسی-webrtc/launch-args/probe all-pass+all-fail/TOTP/CRUD اعتبارنامه/masked/detect کپچا — همه پاس؛ auto_login با StubEngine: ۳ گام تایپ+submit تأیید
+   236→  * هارنس سرور + ۲۱ تست اندپوینت: همه پاس — شامل ورود خودکار بدون حساب (خطای فارسی «ذخیره نشده») و با حساب (job done با ۱۴ step)
+   237→  * agent-browser روی /panel.html: صفر خطا؛ فوتر بدون overlap در داشبورد و پلتفرم‌ها (اثبات هندسی)؛ ۱۰ سوییچ + سطح‌ها ۳→۹→۱۰؛ چیپ حساب‌ها (تلگرام ۲ فیلد، بله ۱ فیلد)؛ ۸ دکمهٔ ورود خودکار؛ toast دمو؛ موبایل 390px بدون سرریز؛ VLM: بدون شکستگی/هم‌پوشانی
+   238→  * bun run lint: صفر خطا؛ ZIP: ۵۰ entry شامل stealth.py/captcha.py/credentials.py/stealth-probe.html
+   239→
+   240→Stage Summary:
+   241→- نوار مزاحم برای همیشه رفع شد (ریشهٔ واقعی: قفل قد body) — فوتر حالا در همهٔ نماها پایین محتوا یا پایین صفحه است
+   242→- ضد شناسایی v2 با ۱۰ ماژول قابل‌تنظیم از پنل، اثر انگشت پایدار per-profile، تست سریع داخلی و سایت تست واقعی — روی همهٔ پلتفرم‌ها به‌صورت پیش‌فرض فعال (سطح استاندارد)
+   243→- ورود خودکار کامل: حساب‌ها در data/credentials.json (رمز هرگز به مرورگر برنمی‌گردد)، فرم‌ها خودکار پر می‌شوند، کپچا با 2Captcha حل و تزریق می‌شود، کد 2FA با TOTP خودکار ساخته می‌شود، کد SMS در پنجرهٔ باز وارد می‌شود
+   244→- وابستگی جدیدی اضافه نشد (فقط stdlib) — برای کاربر فقط دانلود ZIP جدید کافی است
+   245→
+   246→---
+   247→Task ID: 6
+   248→Agent: main-agent (Z.ai Code)
+   249→Task: ParsAgent پنل — رفع ۵ درخواست کاربر: باگ انتخاب اکشن در اجرای سریع، دکمه آپلود عکس، زمان‌بندی کارها + راهنمای طبیعی بودن، راهنمای کامل سایت/تست بات/تنظیمات، عدم شروع خودکار ضبط ماکرو
+   250→
+   251→Work Log:
+   252→- بازنویسی کامل سه فایل پروژهٔ کاربر (پروژه روی ویندوز کاربر اجرا می‌شود، تحویل به‌صورت code block):
+   253→  1. panel_server.py — بک‌اند FastAPI کامل: state polling ایمن (فرم‌ها هرگز re-render نمی‌شوند)، آپلود multipart به پوشه media، زمان‌بند سه‌حالته (interval با jitter / daily با گرید ۲۴ ساعته / once)، راهنمای per-platform طبیعی بودن، تست بات ۸-موردی، credentials با mask، scheduler با guard عدم هم‌پوشانی، recorder فقط با POST /api/macro/start
+   254→  2. static/index.html — SPA فارسی RTL با ۸ تب: داشبورد/پلتفرم‌ها/اجرای سریع/زمان‌بندی/رسانه‌ها/ماکرو/تنظیمات/راهنما؛ دکمه «⬆ آپلود از سیستم» کنار هر فیلد media + تب رسانه با dropzone؛ دکمه «🛡 پیشنهاد ایمن»؛ ۱۰ بخش راهنمای کامل
+   255→  3. launcher.py — Tkinter، فقط سرور را بالا می‌آورد؛ هیچ ضبط خودکار
+   256→- تأیید سندباکسی: py_compile OK، سرور بالا آمد، ساخت/حذف زمان‌بندی OK، آپلود PNG OK، settings persist OK
+   257→- تأیید مرورگری (agent-browser): انتخاب «فالو کردن» بعد از ۷ ثانیه (۲+ چرخه poll) حفظ شد (رفع باگ تأییدشده)؛ گرید ۲۴ ساعته؛ پیشنهاد ایمن 35-120s؛ ۱۰ بخش راهنما؛ ۲۱ کنترل تنظیمات؛ thumbnail رسانه؛ بدون خطای JS؛ footer sticky
+   258→
+   259→Stage Summary:
+   260→- ریشهٔ باگ اجرای سریع: poll قبلی کل فرم را بازسازی می‌کرد → حالا فقط chip/متن‌های data-dyn آپدیت می‌شوند
+   261→- ضبط ماکرو: صراحتاً فقط با دکمه شروع می‌شود؛ در startup فقط scheduler فعال است
+   262→- فایل‌های تحویلی در /home/z/my-project/parsagent/ (panel_server.py, static/index.html, launcher.py) آماده کپی روی ویندوز کاربر
+   263→
+   264→---
+   265→Task ID: B
+   266→Agent: full-stack-developer
+   267→Task: اتصال سایت به بستهٔ نهایی parsagent/ (نسخهٔ ۲.۰.۰) — به‌روزرسانی APIهای دانلود/مرور سورس، ارتقای نسخه در UI و بازنویسی راهنمای نصب (حذف ارجاع‌های CLI/EXE)
+   268→
+   269→Work Log:
+   270→- src/app/api/download/route.ts: AGENT_ROOT از agent → parsagent؛ فیلتر ZIP بازنویسی شد — adm-zip مسیر کامل با پیشوند ریشهٔ ZIP و جداکنندهٔ / به فیلتر می‌دهد (پوشه‌ها با اسلش انتهایی)، پس نرمال‌سازی done و چک سگمنت اول نسبت به RUNTIME_DIRS={config,media,macros,profiles,logs} انجام شد؛ نام فایل ZIP → ParsAgent-v2.0.zip؛ ریشهٔ داخلی ZIP همان pars-agent ماند
+   271→- src/app/api/agent/files/route.ts: AGENT_ROOT → parsagent؛ SKIP_DIRS += media, macros, profiles, config؛ LANG_BY_EXT += .html→markup؛ ORDER بازنویسی شد (panel_server.py → README.md → requirements.txt → launcher.py → ParsAgent.bat → static/)
+   272→- src/components/agent/code-viewer.tsx: فایل پیش‌فرض selected از main.py → panel_server.py
+   273→- src/components/agent/download-section.tsx: چیپ «نسخهٔ ۱.۰.۰» → «نسخهٔ ۲.۰.۰»؛ متن کارت دانلود → «پکیج کامل و آمادهٔ اجرا: سرور پنل محلی + رابط فارسی + لانچر گرافیکی + راهنمای کامل — استخراج کن، اجرا کن.»
+   274→- ارتقای نسخه: header.tsx و footer.tsx (PARSAGENT · v2.0.0) و data.ts (AGENT_VERSION="v2.0.0")
+   275→- install-guide.tsx: حذف جملهٔ «کاربر حرفه‌ای؟ CLI هم سر جایش است.» از گام ۴؛ سه آکاردئون قدیمی (exe/macro-keys/cli) با run-direct (اجرای مستقیم python panel_server.py + PANEL_PORT) و mirror (آینهٔ npmmirror برای کرومیوم) و data (نقشهٔ پوشه‌های داده) جایگزین شدند؛ import بلااستفادهٔ ChevronDown حذف شد — هیچ ارجاعی به build.bat/main.py/CLI/F9/F10/PyInstaller/EXE در این فایل نماند
+   276→- محدودهٔ ممنوعه دست‌نخورده ماند: parsagent/ ، public/panel.html ، شبیه‌سازها (demo/terminal/hero/panel/*) ، پالت emerald ، RTL/Vazirmatn
+   277→- اعتبارسنجی:
+   278→  * bun run lint: صفر خطا/هشدار (exit 0)
+   279→  * GET /api/download: 200 با filename="ParsAgent-v2.0.zip" — ZIP حاوی pars-agent/{panel_server.py, README.md, requirements.txt, launcher.py, ParsAgent.bat, static/, static/index.html} و صفر entry از config/media/macros/profiles/__pycache__
+   280→  * GET /api/agent/files: ۶ فایل، ۳۰۸۶ خط، ۱۵۸KB — ترتیب دقیقاً طبق ORDER جدید؛ static/index.html با language=markup
+   281→  * agent-browser: / بدون خطای کنسول/هیدریشن؛ PARSAGENT · v2.0.0 در هدر و فوتر؛ صفر v1.0.0؛ مرور سورس با panel_server.py پیش‌فرض رندر شد (badge=python، «۶ فایل»)؛ /panel.html بنر «پیش‌نمایش استاتیک» + ۸ تب (شامل راهنما) + ۵ خط لاگ تدریجی در #logfeed و بدون خطای JS؛ موبایل 390px روی هر دو صفحه scrollWidth=clientWidth=390؛ فوتر چسبان (footerBottom=viewportH در ویوپورت 3000)؛ آکاردئون‌های جدید هر سه باز و محتوا/CodeBlockها تأیید شدند
+   282→  * dev.log: صفر خطای کامپایل/رانتایم (فقط 404 قدیمی /api/health و هشدار dev از پیش موجود)
+   283→
+   284→Stage Summary:
+   285→- سایت حالا به بستهٔ نهایی parsagent/ (v2.0.0) وصل است: ZIP دانلودی ParsAgent-v2.0.zip (۴۴.۵KB، ۷ entry، بدون داده‌های شخصی کاربر) و مرورگر سورس فایل‌های واقعی ۲.۰.۰ را نشان می‌دهد
+   286→- نکتهٔ فنی مهم: فیلتر adm-zip مسیر «کامل داخل ZIP» می‌گیرد نه مسیر نسبی — با نرمال‌سازی جداکننده/اسلش انتهایی و چک سگمنت اول، پوشه‌های ران‌تایم هم از ZIP حذف شدند (entryهای پوشهٔ خالی config/media/macros/profiles هم رفتند)
+   287→- راهنمای نصب با معماری جدید هم‌راستا شد: مسیر اصلی لانچر گرافیکی، اجرای مستقیم panel_server.py، آینهٔ کرومیوم برای ایران، و نقشهٔ ذخیره‌سازی داده‌ها
+   288→
+   289→---
+   290→Task ID: A + A2
+   291→Agent: main-orchestrator (Z.ai Code)
+   292→Task: درخواست کاربر «خودت فایلهای پروژه رو مثل همیشه کامل کن بده دانلود کنم» — کامل‌کردن بستهٔ نهایی parsagent به یک پروژهٔ قابل‌دانلود کامل
+   293→
+   294→Work Log:
+   295→- افزودن فایل‌های مکمل به parsagent/:
+   296→  * requirements.txt — fastapi + uvicorn[standard] + python-multipart + playwright + راهنمای آینهٔ ایران برای نصب کرومیوم
+   297→  * ParsAgent.bat — اجرا با دابل‌کلیک (python → py fallback) با chcp 65001 و پیام خطای فارسی در نبود پایتون
+   298→  * README.md — راهنمای کامل فارسی: نصب ۳-مرحله‌ای، ۳ روش اجرا، جدول تور ۸ تب پنل، قابلیت‌های کلیدی (Stealth/زمان‌بندی/حساب‌ها/کپچا)، نقشهٔ ذخیرهٔ داده‌ها، جدول عیب‌یابی، هشدار استفادهٔ مسئولانه
+   299→- launcher.py: افزودن دکمهٔ «📦 نصب پیش‌نیازها (فقط بار اول)» — روی ویندوز pip install -r requirements.txt را در پنجرهٔ کنسول قابل‌مشاهده اجرا می‌کند (cmd /k)؛ روی غیر ویندوز با capture و نمایش نتیجه؛ geometry 360→400؛ اصلاح متن هشدار requirements.txt؛ افزودن نوت «نصب مرورگر معمولاً لازم نیست»
+   300→- تست دودی panel_server.py در سندباکس: py_compile OK — بوت روی PANEL_PORT=8799 — اندپوینت‌های /api/ready /api/state /api/options /api/schedules /api/settings /api/credentials /api/media /api/macro/list و / همه 200؛ state شامل ۷ پلتفرم
+   301→- ساخت public/panel.html جدید (پیش‌نمایش استاتیک پنل ۲.۰.۰): snapshot واقعی همهٔ GET APIها (از سرور در حال اجرا) + shim جاوااسکریپت که fetch این‌ترسپت می‌کند (GET→snapshot، سایر→پاسخ دموی «ok») + WebSocket ساختگی (FakeWS) + ۵ خط لاگ نمونهٔ تدریجی در #logfeed + بنر نارنجی چسبان «پیش‌نمایش استاتیک» — اسکریپت سازنده در tests/tmp/build_demo_panel.py؛ state snapshot دستکاری شد تا اینستاگرام/تلگرام «باز» دیده شوند
+   302→
+   303→Stage Summary:
+   304→- بستهٔ نهایی parsagent حالا پروژهٔ کامل و خودکفاست: panel_server.py + static/index.html + launcher.py + requirements.txt + README.md + ParsAgent.bat (۶ فایل، ~2913 خط)؛ پوشه‌های config/media/macros/profiles در اولین اجرا خودکار ساخته می‌شوند
+   305→- پیش‌نمایش استاتیک جدید پنل جایگزین panel.html قدیمی (v1.2) شد — ظاهر واقعی پنل ۲.۰.۰ با ۸ تب و لاگ زندهٔ نمونه
+   306→
+   307→---
+   308→Task ID: C
+   309→Agent: main-orchestrator (Z.ai Code)
+   310→Task: تایید نهایی مستقل با agent-browser + بسته‌بندی نهایی
+   311→
+   312→Work Log:
+   313→- لندینگ /: بدون خطا؛ v2.0.0 حاضر، v1.0.0 غایب؛ scrollWidth=clientWidth (بدون سرریز)
+   314→- مرور سورس: فایل پیش‌فرض panel_server.py رندر شد، main.py غایب
+   315→- /panel.html: بنر دمو ✓، ۸ تب (داشبورد/پلتفرم‌ها/اجرای سریع/زمان‌بندی/رسانه‌ها/ضبط ماکرو/تنظیمات/راهنما) ✓، ۱۴ chip پلتفرم ✓، لاگ‌های نمونه ظاهر شدند ✓، بدون خطای JS ✓
+   316→- تست باگ قبلی کاربر (پرش منوی اجرای سریع): در #qr-action گزینهٔ ۴ («لایک توییت‌های فید») انتخاب شد — بعد از ۵+ ثانیه و چند سیکل polling هنوز همان انتخاب بود ✓ (رفع تاییدشده)
+   317→- راهنمای نصب: آکاردئون‌های جدید (اجرای مستقیم/آینهٔ کرومیوم/داده‌ها) حاضر؛ صفر ارجاع به python main.py و build.bat
+   318→- موبایل 390px: هر دو صفحه بدون سرریز افقی (w=c=390)
+   319→- ZIP نهایی: ParsAgent-v2.0.zip (44,518 بایت، ۷ entry) — شامل هر ۶ فایل + پوشهٔ static؛ صفر entry از config/media/macros/profiles/__pycache__ (دیتای شخصی هرگز در ZIP نیست)
+   320→- dev.log: صفر خطای جدید؛ console: صفر error (فقط info های benign)
+   321→
+   322→Stage Summary:
+   323→- همه‌چیز تایید شد: بستهٔ کامل ParsAgent v2.0.0 (با هر ۹ اصلاح کاربر) از دکمهٔ «دانلود سورس کامل (ZIP)» سایت قابل دانلود است؛ پیش‌نمایش واقعی پنل در /panel.html؛ سایت، ZIP و مرورگر سورس همگی با نسخهٔ نهایی هم‌گام‌اند
+   324→

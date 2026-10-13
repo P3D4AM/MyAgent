@@ -1,0 +1,28 @@
+{
+  "choices": [
+    {
+      "finish_reason": "stop",
+      "index": 0,
+      "message": {
+        "content": "Yes, the layout is intact with no broken or overlapping elements.",
+        "role": "assistant"
+      }
+    }
+  ],
+  "created": 1790367791,
+  "id": "202609260423107126e97848e64fa1",
+  "model": "glm-5v-turbo",
+  "object": "chat.completion",
+  "request_id": "202609260423107126e97848e64fa1",
+  "usage": {
+    "completion_tokens": 14,
+    "completion_tokens_details": {
+      "reasoning_tokens": 0
+    },
+    "prompt_tokens": 432,
+    "prompt_tokens_details": {
+      "cached_tokens": 0
+    },
+    "total_tokens": 446
+  }
+}
